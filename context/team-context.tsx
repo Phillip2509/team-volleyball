@@ -4,7 +4,7 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, 
 import { useAuth } from "@/context/auth-context";
 import { supabase } from "@/lib/supabase";
 import type { Profile } from "@/types/auth";
-import type { Team, TeamMember, TeamMembershipWithProfile } from "@/types/team";
+import type { Team, TeamMember, TeamMembershipWithProfile, UpdateMemberRoleParams } from "@/types/team";
 
 type TeamContextValue = {
   teams: Team[];
@@ -13,12 +13,16 @@ type TeamContextValue = {
   teamMembers: TeamMembershipWithProfile[];
   isLoading: boolean;
   isMembersLoading: boolean;
+  updatingMemberId: string | null;
   errorMessage: string;
+  successMessage: string;
   refreshTeams: () => Promise<void>;
   refreshMembers: () => Promise<void>;
   selectTeam: (teamId: string) => Promise<void>;
   createTeam: (teamName: string) => Promise<Team>;
   joinTeamByCode: (joinCode: string) => Promise<Team>;
+  clearMessages: () => void;
+  updateMemberRole: (params: UpdateMemberRoleParams) => Promise<TeamMember>;
 };
 
 type TeamRow = {
@@ -101,6 +105,26 @@ function normalizeRpcTeam(data: unknown): Team {
 }
 
 function getTeamErrorMessage(message: string) {
+  if (message.includes("ADMIN_REQUIRED")) {
+    return "Nur Admins duerfen Rollen aendern.";
+  }
+
+  if (message.includes("MEMBER_NOT_FOUND")) {
+    return "Das Mitglied wurde nicht gefunden.";
+  }
+
+  if (message.includes("INVALID_ROLE")) {
+    return "Diese Rolle ist ungueltig.";
+  }
+
+  if (message.includes("CANNOT_CHANGE_OWN_ROLE")) {
+    return "Du kannst deine eigene Rolle hier nicht aendern.";
+  }
+
+  if (message.includes("LAST_ADMIN_REQUIRED")) {
+    return "Dieses Team muss mindestens einen Admin behalten.";
+  }
+
   if (message.includes("INVALID_JOIN_CODE")) {
     return "Der Einladungscode ist ungueltig.";
   }
@@ -140,7 +164,9 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const [teamMembers, setTeamMembers] = useState<TeamMembershipWithProfile[]>([]);
   const [isLoading, setIsLoading] = useState(Boolean(supabase));
   const [isMembersLoading, setIsMembersLoading] = useState(false);
+  const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   const currentTeam = useMemo(
     () => teams.find((team) => team.id === selectedTeamId) ?? teams[0] ?? null,
@@ -258,9 +284,15 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       teamMembers,
       isLoading,
       isMembersLoading,
+      updatingMemberId,
       errorMessage,
+      successMessage,
       refreshTeams,
       refreshMembers,
+      clearMessages: () => {
+        setErrorMessage("");
+        setSuccessMessage("");
+      },
       selectTeam: async (teamId) => {
         setSelectedTeamId(teamId);
         await AsyncStorage.setItem(SELECTED_TEAM_KEY, teamId);
@@ -305,6 +337,41 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         await refreshTeams();
         return joinedTeam;
       },
+      updateMemberRole: async ({ role, teamId, userId }) => {
+        if (!supabase || !session?.user || isDemoMode) {
+          throw new Error("Supabase ist nicht konfiguriert oder du bist nicht angemeldet.");
+        }
+
+        setUpdatingMemberId(userId);
+        setErrorMessage("");
+        setSuccessMessage("");
+
+        try {
+          const { data, error } = await supabase.rpc("update_team_member_role", {
+            input_role: role,
+            input_team_id: teamId,
+            input_user_id: userId,
+          });
+
+          if (error) {
+            console.error("UPDATE_MEMBER_ROLE_ERROR", error);
+            throw new Error(getTeamErrorMessage(error.message));
+          }
+
+          const updatedMembership = mapMembership(data as MembershipRow);
+          await refreshTeams();
+          await refreshMembers();
+          setSuccessMessage("Rolle wurde aktualisiert.");
+          return updatedMembership;
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Die Rolle konnte nicht geaendert werden.";
+          setErrorMessage(message);
+          throw new Error(message);
+        } finally {
+          setUpdatingMemberId(null);
+        }
+      },
     }),
     [
       currentMembership,
@@ -316,8 +383,10 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       refreshMembers,
       refreshTeams,
       session?.user,
+      successMessage,
       teamMembers,
       teams,
+      updatingMemberId,
     ],
   );
 

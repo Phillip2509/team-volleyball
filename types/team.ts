@@ -23,3 +23,9 @@ export type TeamMember = {
 export type TeamMembershipWithProfile = TeamMember & {
   profile: Profile;
 };
+
+export type UpdateMemberRoleParams = {
+  teamId: string;
+  userId: string;
+  role: TeamRole;
+};

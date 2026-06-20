@@ -40,3 +40,6 @@ Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
+
+# Supabase local/link state
+supabase/.temp/
