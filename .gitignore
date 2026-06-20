@@ -1,0 +1,42 @@
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+coverage/
+expo-env.d.ts
+
+# Native credentials
+*.p8
+*.p12
+*.mobileprovision
+*.cer
+*.key
+*.pem
+*.jks
+
+# Native generated folders
+/ios
+/android
+
+# local env files
+.env
+.env.*
+!.env.example
+.env*.local
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.expo-web.stdout.log
+.expo-web.stderr.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# TypeScript
+*.tsbuildinfo
