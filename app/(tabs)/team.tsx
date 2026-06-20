@@ -1,4 +1,5 @@
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppHeader } from "@/components/app-header";
 import { Card } from "@/components/card";
@@ -17,6 +18,11 @@ import { formatDateTime, getTeamRoleLabel } from "@/utils/format";
 
 const ROLE_OPTIONS: TeamRole[] = ["player", "coach", "admin"];
 
+type PendingRoleChange = {
+  member: TeamMembershipWithProfile;
+  nextRole: TeamRole;
+};
+
 export default function TeamScreen() {
   const { isDemoMode } = useAuth();
   const { colors } = useTheme();
@@ -31,6 +37,8 @@ export default function TeamScreen() {
     updateMemberRole,
     updatingMemberId,
   } = useTeam();
+  const [pendingRoleChange, setPendingRoleChange] = useState<PendingRoleChange | null>(null);
+  const [modalErrorMessage, setModalErrorMessage] = useState("");
   const isCurrentUserAdmin = currentMembership?.role === "admin";
 
   if (isDemoMode) {
@@ -39,9 +47,9 @@ export default function TeamScreen() {
         <AppHeader
           eyebrow={demoDataNotice}
           title={demoTeam.name}
-          subtitle={`${demoTeam.season} - neutrale Demo-Spieler fuer die erste UI-Basis.`}
+          subtitle={`${demoTeam.season} - neutrale Demo-Spieler für die erste UI-Basis.`}
         />
-        <SectionHeader title="Teamuebersicht" caption="Lokale Mock-Spieler" />
+        <SectionHeader title="Teamübersicht" caption="Lokale Mock-Spieler" />
         <Card>
           {demoTeamMembers.map((member) => (
             <TeamMemberRow key={member.id} member={member} />
@@ -101,38 +109,143 @@ export default function TeamScreen() {
               member={member}
               onChangeRole={(nextRole) => {
                 clearMessages();
-                const oldRole = getTeamRoleLabel(member.role);
-                const newRole = getTeamRoleLabel(nextRole);
-                Alert.alert(
-                  "Rolle aendern",
-                  `${member.profile.displayName} wird von ${oldRole} zu ${newRole} geaendert.`,
-                  [
-                    { text: "Abbrechen", style: "cancel" },
-                    {
-                      text: "Aendern",
-                      onPress: () => {
-                        void updateMemberRole({
-                          role: nextRole,
-                          teamId: member.teamId,
-                          userId: member.userId,
-                        }).catch((error) => {
-                          Alert.alert(
-                            "Rolle konnte nicht geaendert werden",
-                            error instanceof Error
-                              ? error.message
-                              : "Die Rolle konnte nicht geaendert werden.",
-                          );
-                        });
-                      },
-                    },
-                  ],
-                );
+                setModalErrorMessage("");
+                setPendingRoleChange({ member, nextRole });
               }}
             />
           ))
         )}
       </Card>
+
+      <RoleChangeModal
+        errorMessage={modalErrorMessage}
+        isUpdating={Boolean(
+          pendingRoleChange &&
+            updatingMemberId === pendingRoleChange.member.userId,
+        )}
+        onCancel={() => {
+          if (!updatingMemberId) {
+            setPendingRoleChange(null);
+            setModalErrorMessage("");
+          }
+        }}
+        onConfirm={() => {
+          if (!pendingRoleChange) {
+            return;
+          }
+
+          const { member, nextRole } = pendingRoleChange;
+          setModalErrorMessage("");
+          void updateMemberRole({
+            role: nextRole,
+            teamId: member.teamId,
+            userId: member.userId,
+          })
+            .then(() => {
+              setPendingRoleChange(null);
+            })
+            .catch((error) => {
+              setModalErrorMessage(
+                error instanceof Error
+                  ? error.message
+                  : "Die Rolle konnte nicht geändert werden.",
+              );
+            });
+        }}
+        pendingRoleChange={pendingRoleChange}
+      />
     </ScreenContainer>
+  );
+}
+
+function RoleChangeModal({
+  errorMessage,
+  isUpdating,
+  onCancel,
+  onConfirm,
+  pendingRoleChange,
+}: {
+  errorMessage: string;
+  isUpdating: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  pendingRoleChange: PendingRoleChange | null;
+}) {
+  const { colors } = useTheme();
+
+  const oldRole = pendingRoleChange
+    ? getTeamRoleLabel(pendingRoleChange.member.role)
+    : "";
+  const newRole = pendingRoleChange
+    ? getTeamRoleLabel(pendingRoleChange.nextRole)
+    : "";
+  const memberName = pendingRoleChange?.member.profile.displayName ?? "";
+
+  return (
+    <Modal
+      animationType="fade"
+      onRequestClose={onCancel}
+      transparent
+      visible={Boolean(pendingRoleChange)}
+    >
+      <View style={styles.modalBackdrop}>
+        <View
+          style={[
+            styles.modalCard,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+              shadowColor: colors.shadow,
+            },
+          ]}
+        >
+          <Text style={[styles.modalTitle, { color: colors.text }]}>Rolle ändern</Text>
+          <Text style={[styles.modalBody, { color: colors.mutedText }]}>
+            {memberName} wird von {oldRole} zu {newRole} geändert.
+          </Text>
+          {errorMessage ? (
+            <Text style={[styles.modalError, { color: colors.danger }]}>
+              {errorMessage}
+            </Text>
+          ) : null}
+          {isUpdating ? <ActivityIndicator color={colors.primary} /> : null}
+          <View style={styles.modalActions}>
+            <Pressable
+              disabled={isUpdating}
+              onPress={onCancel}
+              style={[
+                styles.modalButton,
+                {
+                  backgroundColor: colors.inputBackground,
+                  borderColor: colors.border,
+                },
+                isUpdating && styles.disabled,
+              ]}
+            >
+              <Text style={[styles.modalButtonText, { color: colors.text }]}>
+                Abbrechen
+              </Text>
+            </Pressable>
+            <Pressable
+              disabled={isUpdating}
+              onPress={onConfirm}
+              style={[
+                styles.modalButton,
+                {
+                  backgroundColor: colors.primary,
+                  borderColor: colors.primary,
+                },
+                isUpdating && styles.disabled,
+              ]}
+            >
+              <Text style={[styles.modalButtonText, { color: colors.onPrimary }]}>
+                {isUpdating ? "Wird geändert ..." : "Bestätigen"}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -179,11 +292,11 @@ function RealTeamMemberRow({
         <View style={styles.rolePanel}>
           {isOwnMembership ? (
             <Text style={[styles.roleHint, { color: colors.mutedText }]}>
-              Deine eigene Rolle kann hier nicht geaendert werden.
+              Deine eigene Rolle kann hier nicht geändert werden.
             </Text>
           ) : (
             <>
-              <Text style={[styles.roleHint, { color: colors.mutedText }]}>Rolle aendern</Text>
+              <Text style={[styles.roleHint, { color: colors.mutedText }]}>Rolle ändern</Text>
               <View style={styles.roleActions}>
                 {ROLE_OPTIONS.map((role) => {
                   const isCurrentRole = member.role === role;
@@ -309,5 +422,51 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.62,
+  },
+  modalBackdrop: {
+    alignItems: "center",
+    backgroundColor: "rgba(15, 23, 42, 0.56)",
+    flex: 1,
+    justifyContent: "center",
+    padding: spacing.lg,
+  },
+  modalCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: spacing.md,
+    maxWidth: 460,
+    padding: spacing.xl,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.18,
+    shadowRadius: 22,
+    width: "100%",
+  },
+  modalTitle: {
+    fontSize: fontSizes.xl,
+    fontWeight: "900",
+  },
+  modalBody: {
+    fontSize: fontSizes.md,
+    lineHeight: 23,
+  },
+  modalError: {
+    fontSize: fontSizes.sm,
+    lineHeight: 20,
+  },
+  modalActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    justifyContent: "flex-end",
+  },
+  modalButton: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  modalButtonText: {
+    fontSize: fontSizes.sm,
+    fontWeight: "800",
   },
 });

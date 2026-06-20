@@ -106,7 +106,7 @@ function normalizeRpcTeam(data: unknown): Team {
 
 function getTeamErrorMessage(message: string) {
   if (message.includes("ADMIN_REQUIRED")) {
-    return "Nur Admins duerfen Rollen aendern.";
+    return "Nur Admins dürfen Rollen ändern.";
   }
 
   if (message.includes("MEMBER_NOT_FOUND")) {
@@ -114,11 +114,11 @@ function getTeamErrorMessage(message: string) {
   }
 
   if (message.includes("INVALID_ROLE")) {
-    return "Diese Rolle ist ungueltig.";
+    return "Diese Rolle ist ungültig.";
   }
 
   if (message.includes("CANNOT_CHANGE_OWN_ROLE")) {
-    return "Du kannst deine eigene Rolle hier nicht aendern.";
+    return "Du kannst deine eigene Rolle hier nicht ändern.";
   }
 
   if (message.includes("LAST_ADMIN_REQUIRED")) {
@@ -126,7 +126,7 @@ function getTeamErrorMessage(message: string) {
   }
 
   if (message.includes("INVALID_JOIN_CODE")) {
-    return "Der Einladungscode ist ungueltig.";
+    return "Der Einladungscode ist ungültig.";
   }
 
   if (message.includes("ALREADY_TEAM_MEMBER")) {
@@ -146,7 +146,7 @@ function getTeamErrorMessage(message: string) {
   }
 
   if (message.toLowerCase().includes("permission")) {
-    return "Du hast dafuer keine Berechtigung.";
+    return "Du hast dafür keine Berechtigung.";
   }
 
   if (message.toLowerCase().includes("network")) {
@@ -361,11 +361,11 @@ export function TeamProvider({ children }: { children: ReactNode }) {
           const updatedMembership = mapMembership(data as MembershipRow);
           await refreshTeams();
           await refreshMembers();
-          setSuccessMessage("Rolle wurde aktualisiert.");
+          setSuccessMessage("Änderung erfolgreich.");
           return updatedMembership;
         } catch (error) {
           const message =
-            error instanceof Error ? error.message : "Die Rolle konnte nicht geaendert werden.";
+            error instanceof Error ? error.message : "Die Rolle konnte nicht geändert werden.";
           setErrorMessage(message);
           throw new Error(message);
         } finally {
