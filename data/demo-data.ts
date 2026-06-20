@@ -1,9 +1,9 @@
-import type { Announcement, Team, TeamEvent, TeamMember } from "@/types/models";
+import type { Announcement, DemoTeam, TeamEvent, TeamMember } from "@/types/models";
 
 export const demoDataNotice =
   "Lokale Demo-Daten. Noch keine Supabase-Anbindung.";
 
-export const demoTeam: Team = {
+export const demoTeam: DemoTeam = {
   id: "demo-team",
   name: "Team Volleyball",
   season: "Saison 2026/27",

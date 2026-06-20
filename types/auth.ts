@@ -6,3 +6,11 @@ export type AppUserProfile = {
   displayName: string;
   role: UserRole;
 };
+
+export type Profile = {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+};

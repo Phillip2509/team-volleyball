@@ -1,5 +1,6 @@
 import Constants from "expo-constants";
-import { Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AppHeader } from "@/components/app-header";
 import { Card } from "@/components/card";
@@ -7,11 +8,26 @@ import { PrimaryButton } from "@/components/primary-button";
 import { ScreenContainer } from "@/components/screen-container";
 import { fontSizes, radius, spacing } from "@/constants/theme";
 import { useAuth } from "@/context/auth-context";
+import { useTeam } from "@/context/team-context";
 import { useTheme } from "@/context/theme-context";
+import { getTeamRoleLabel } from "@/utils/format";
 
 export default function SettingsScreen() {
   const { colors, preference, setPreference, systemTheme } = useTheme();
-  const { isDemoMode, leaveDemoMode, session, signOut } = useAuth();
+  const {
+    isDemoMode,
+    leaveDemoMode,
+    profile,
+    reloadProfile,
+    session,
+    signOut,
+    updateProfile,
+    user,
+  } = useAuth();
+  const { currentMembership, currentTeam, refreshMembers } = useTeam();
+  const [displayName, setDisplayName] = useState(profile?.displayName ?? "");
+  const [statusMessage, setStatusMessage] = useState("");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   async function handleSignOut() {
     try {
@@ -24,11 +40,26 @@ export default function SettingsScreen() {
     }
   }
 
+  async function saveProfile() {
+    setStatusMessage("");
+    setIsSavingProfile(true);
+    try {
+      await updateProfile(displayName);
+      await reloadProfile();
+      await refreshMembers();
+      setStatusMessage("Profil wurde gespeichert.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Profil konnte nicht gespeichert werden.");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  }
+
   return (
     <ScreenContainer>
       <AppHeader
         title="Einstellungen"
-        subtitle="Darstellung, Profil-Platzhalter und App-Informationen."
+        subtitle="Darstellung, Profil, Team und App-Informationen."
       />
 
       <Card>
@@ -65,15 +96,57 @@ export default function SettingsScreen() {
 
       <Card>
         <Text style={[styles.cardTitle, { color: colors.text }]}>Profil</Text>
-        <Text style={[styles.body, { color: colors.mutedText }]}>
-          Profilfelder werden angelegt, sobald Team- und Rollenlogik mit Supabase verbunden wird.
-        </Text>
+        {isDemoMode ? (
+          <Text style={[styles.body, { color: colors.mutedText }]}>
+            Demo-Modus: Es werden keine Supabase-Profildaten gespeichert.
+          </Text>
+        ) : (
+          <>
+            <InfoRow label="E-Mail" value={user?.email ?? "Unbekannt"} />
+            <Text style={[styles.label, { color: colors.text }]}>Anzeigename</Text>
+            <TextInput
+              editable={!isSavingProfile}
+              onChangeText={setDisplayName}
+              placeholder="Anzeigename"
+              placeholderTextColor={colors.mutedText}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: colors.inputBackground,
+                  borderColor: colors.border,
+                  color: colors.text,
+                },
+              ]}
+              value={displayName}
+            />
+            <PrimaryButton
+              disabled={isSavingProfile}
+              label={isSavingProfile ? "Profil wird gespeichert ..." : "Anzeigenamen speichern"}
+              onPress={saveProfile}
+            />
+          </>
+        )}
+      </Card>
+
+      <Card>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>Team</Text>
+        {currentTeam ? (
+          <>
+            <InfoRow label="Aktuelles Team" value={currentTeam.name} />
+            <InfoRow label="Rolle" value={getTeamRoleLabel(currentMembership?.role ?? "player")} />
+            <InfoRow label="Einladungscode" value={currentTeam.joinCode} />
+          </>
+        ) : (
+          <Text style={[styles.body, { color: colors.mutedText }]}>
+            {isDemoMode ? "Lokale Demo-Teamdaten." : "Noch kein Team verbunden."}
+          </Text>
+        )}
       </Card>
 
       <Card>
         <Text style={[styles.cardTitle, { color: colors.text }]}>Datenschutz</Text>
         <Text style={[styles.body, { color: colors.mutedText }]}>
-          Platzhalter fuer spaetere Datenschutzinformationen. Aktuell werden nur lokale Demo-Daten angezeigt.
+          Platzhalter fuer spaetere Datenschutzinformationen.
         </Text>
       </Card>
 
@@ -83,6 +156,10 @@ export default function SettingsScreen() {
         <InfoRow label="Version" value={Constants.expoConfig?.version ?? "1.0.0"} />
         <InfoRow label="Plattform" value={Platform.OS} />
       </Card>
+
+      {statusMessage ? (
+        <Text style={[styles.statusMessage, { color: colors.mutedText }]}>{statusMessage}</Text>
+      ) : null}
 
       {session ? (
         <PrimaryButton label="Abmelden" onPress={() => void handleSignOut()} variant="secondary" />
@@ -114,6 +191,20 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     marginTop: spacing.sm,
   },
+  label: {
+    fontSize: fontSizes.sm,
+    fontWeight: "800",
+    marginBottom: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  input: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    fontSize: fontSizes.md,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 13,
+  },
   segment: {
     flexDirection: "row",
     gap: spacing.sm,
@@ -143,5 +234,9 @@ const styles = StyleSheet.create({
   infoValue: {
     fontSize: fontSizes.sm,
     fontWeight: "800",
+  },
+  statusMessage: {
+    fontSize: fontSizes.sm,
+    lineHeight: 20,
   },
 });

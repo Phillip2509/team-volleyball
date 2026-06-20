@@ -10,10 +10,15 @@ import { SectionHeader } from "@/components/section-header";
 import { StatusBadge } from "@/components/status-badge";
 import { demoAnnouncements, demoDataNotice, demoEvents, demoTeamMembers } from "@/data/demo-data";
 import { fontSizes, spacing } from "@/constants/theme";
+import { useAuth } from "@/context/auth-context";
+import { useTeam } from "@/context/team-context";
 import { useTheme } from "@/context/theme-context";
+import { getTeamRoleLabel } from "@/utils/format";
 
 export default function HomeScreen() {
   const { colors } = useTheme();
+  const { isDemoMode } = useAuth();
+  const { currentMembership, currentTeam, teamMembers } = useTeam();
   const router = useRouter();
   const nextEvent = demoEvents[0];
   const activeMembers = demoTeamMembers.filter((member) => member.status === "aktiv").length;
@@ -22,9 +27,13 @@ export default function HomeScreen() {
   return (
     <ScreenContainer>
       <AppHeader
-        eyebrow={demoDataNotice}
-        title="Bereit fuer den naechsten Satz?"
-        subtitle="Eine moderne Basis fuer Termine, Zusagen, Teamuebersicht und Mannschaftskommunikation."
+        eyebrow={isDemoMode ? demoDataNotice : "Echte Teamdaten aktiv"}
+        title={currentTeam ? currentTeam.name : "Bereit fuer den naechsten Satz?"}
+        subtitle={
+          currentTeam
+            ? "Team und Mitglieder kommen aus Supabase. Termine, Zusagen und Nachrichten sind noch Demo-Bereiche."
+            : "Eine moderne Basis fuer Termine, Zusagen, Teamuebersicht und Mannschaftskommunikation."
+        }
       />
 
       <EventCard event={nextEvent} />
@@ -36,9 +45,13 @@ export default function HomeScreen() {
           <StatusBadge status="yes" />
         </Card>
         <Card style={styles.statCard}>
-          <Text style={[styles.statValue, { color: colors.text }]}>{activeMembers}</Text>
-          <Text style={[styles.statLabel, { color: colors.mutedText }]}>Aktive im Team</Text>
-          <StatusBadge status="aktiv" />
+          <Text style={[styles.statValue, { color: colors.text }]}>
+            {currentTeam ? teamMembers.length : activeMembers}
+          </Text>
+          <Text style={[styles.statLabel, { color: colors.mutedText }]}>
+            {currentTeam ? "Mitglieder" : "Aktive im Team"}
+          </Text>
+          <StatusBadge status={currentMembership ? getTeamRoleLabel(currentMembership.role) : "aktiv"} />
         </Card>
       </View>
 
@@ -55,7 +68,7 @@ export default function HomeScreen() {
         <PrimaryButton label="Team oeffnen" onPress={() => router.push("/team")} variant="secondary" />
       </View>
       <Text style={[styles.note, { color: colors.mutedText }]}>
-        Die Schnellaktionen sind Navigations- und UI-Platzhalter fuer die naechsten Funktionsschritte.
+        Termine, Zusagen und Nachrichten bleiben vorerst Demo- oder Empty-State-Bereiche.
       </Text>
     </ScreenContainer>
   );

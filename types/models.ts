@@ -1,6 +1,6 @@
 export type AttendanceResponse = "yes" | "maybe" | "no" | "open";
 
-export type Team = {
+export type DemoTeam = {
   id: string;
   name: string;
   season: string;

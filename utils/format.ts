@@ -1,4 +1,5 @@
 import type { AttendanceResponse, EventType } from "@/types/models";
+import type { TeamRole } from "@/types/team";
 
 export function formatDate(date: string) {
   const [year, month, day] = date.split("-");
@@ -22,4 +23,26 @@ export function getAttendanceLabel(attendance: AttendanceResponse) {
     open: "Offen",
   };
   return labels[attendance];
+}
+
+export function getTeamRoleLabel(role: TeamRole) {
+  const labels: Record<TeamRole, string> = {
+    admin: "Admin",
+    coach: "Trainer",
+    player: "Spieler",
+  };
+  return labels[role];
+}
+
+export function formatDateTime(dateTime: string) {
+  const date = new Date(dateTime);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
 }
