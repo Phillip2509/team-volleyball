@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { AuthProvider, useAuth } from "@/context/auth-context";
+import { EventProvider } from "@/context/event-context";
 import { TeamProvider, useTeam } from "@/context/team-context";
 import { ThemeProvider, useTheme } from "@/context/theme-context";
 
@@ -12,7 +13,9 @@ export default function RootLayout() {
       <ThemeProvider>
         <AuthProvider>
           <TeamProvider>
-            <RootNavigator />
+            <EventProvider>
+              <RootNavigator />
+            </EventProvider>
           </TeamProvider>
         </AuthProvider>
       </ThemeProvider>

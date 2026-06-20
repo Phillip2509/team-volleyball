@@ -1,5 +1,5 @@
 import type { AttendanceResponse, EventType } from "@/types/models";
-import type { TeamRole } from "@/types/team";
+import type { EventResponseValue, TeamEventStatus, TeamEventType, TeamRole } from "@/types/team";
 
 export function formatDate(date: string) {
   const [year, month, day] = date.split("-");
@@ -32,6 +32,36 @@ export function getTeamRoleLabel(role: TeamRole) {
     player: "Spieler",
   };
   return labels[role];
+}
+
+export function getTeamEventTypeLabel(type: TeamEventType) {
+  const labels: Record<TeamEventType, string> = {
+    training: "Training",
+    match: "Spiel",
+    team_event: "Teamtermin",
+  };
+  return labels[type];
+}
+
+export function getTeamEventStatusLabel(status: TeamEventStatus) {
+  const labels: Record<TeamEventStatus, string> = {
+    scheduled: "geplant",
+    cancelled: "abgesagt",
+  };
+  return labels[status];
+}
+
+export function getEventResponseLabel(response: EventResponseValue | null) {
+  if (!response) {
+    return "Noch keine Antwort";
+  }
+
+  const labels: Record<EventResponseValue, string> = {
+    accepted: "Zugesagt",
+    maybe: "Vielleicht",
+    declined: "Abgesagt",
+  };
+  return labels[response];
 }
 
 export function formatDateTime(dateTime: string) {
