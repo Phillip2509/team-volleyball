@@ -17,11 +17,11 @@ export default function MessagesScreen() {
       <AppHeader
         eyebrow={demoDataNotice}
         title="Nachrichten"
-        subtitle="Eine einfache Mitteilungsuebersicht. Noch kein Chat, kein Echtzeit-System und keine Push-Nachrichten."
+        subtitle="Eine einfache Mitteilungsübersicht. Noch kein Chat, kein Echtzeit-System und keine Push-Nachrichten."
       />
       <SectionHeader title="Mitteilungen" />
       {demoAnnouncements.length === 0 ? (
-        <EmptyState title="Keine Mitteilungen" text="Spaeter erscheinen hier Teaminfos." />
+        <EmptyState title="Keine Mitteilungen" text="Später erscheinen hier Teaminfos." />
       ) : (
         demoAnnouncements.map((announcement) => (
           <Card key={announcement.id}>

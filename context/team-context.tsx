@@ -150,7 +150,7 @@ function getTeamErrorMessage(message: string) {
   }
 
   if (message.toLowerCase().includes("network")) {
-    return "Netzwerkfehler. Bitte pruefe deine Verbindung.";
+    return "Netzwerkfehler. Bitte prüfe deine Verbindung.";
   }
 
   return "Die Team-Aktion ist fehlgeschlagen. Bitte versuche es erneut.";

@@ -56,7 +56,7 @@ function getAuthErrorMessage(errorMessage: string) {
   }
 
   if (message.includes("email not confirmed")) {
-    return "Bitte bestaetige zuerst deine E-Mail-Adresse mit dem Code aus der E-Mail.";
+    return "Bitte bestätige zuerst deine E-Mail-Adresse mit dem Code aus der E-Mail.";
   }
 
   if (message.includes("already registered") || message.includes("already exists")) {
@@ -64,11 +64,11 @@ function getAuthErrorMessage(errorMessage: string) {
   }
 
   if (message.includes("token") || message.includes("expired") || message.includes("otp")) {
-    return "Der Code ist falsch oder abgelaufen. Bitte pruefe ihn oder fordere einen neuen Code an.";
+    return "Der Code ist falsch oder abgelaufen. Bitte prüfe ihn oder fordere einen neuen Code an.";
   }
 
   if (message.includes("network")) {
-    return "Netzwerkfehler. Bitte pruefe deine Verbindung.";
+    return "Netzwerkfehler. Bitte prüfe deine Verbindung.";
   }
 
   return "Die Aktion ist fehlgeschlagen. Bitte versuche es erneut.";

@@ -43,7 +43,7 @@ export const demoTeamMembers: TeamMember[] = [
   {
     id: "member-1",
     name: "Max Mustermann",
-    position: "Aussenangriff",
+    position: "Außenangriff",
     role: "Spieler",
     status: "aktiv",
   },
@@ -74,14 +74,14 @@ export const demoAnnouncements: Announcement[] = [
   {
     id: "announcement-1",
     title: "Training am Dienstag",
-    body: "Bitte bringt beide Trikotsaetze mit. Wir testen Aufstellung und Annahmeformation.",
+    body: "Bitte bringt beide Trikotsätze mit. Wir testen Aufstellung und Annahmeformation.",
     author: "Demo Trainerteam",
     createdAt: "2026-06-20",
   },
   {
     id: "announcement-2",
-    title: "Hallenzeit bestaetigt",
-    body: "Die Halle ist fuer die naechsten vier Wochen wie geplant reserviert.",
+    title: "Hallenzeit bestätigt",
+    body: "Die Halle ist für die nächsten vier Wochen wie geplant reserviert.",
     author: "Demo Organisation",
     createdAt: "2026-06-18",
   },

@@ -28,9 +28,9 @@ export default function SetupScreen() {
         </Text>
         <Text style={[styles.body, { color: colors.mutedText }]}>{setupMessage}</Text>
         <Text style={[styles.body, { color: colors.mutedText }]}>
-          Fuer UI-Tests kannst du die lokale Demo-App mit Mock-Daten oeffnen.
+          Für UI-Tests kannst du die lokale Demo-App mit Mock-Daten öffnen.
         </Text>
-        <PrimaryButton label="Demo-App lokal oeffnen" onPress={enterDemoMode} />
+        <PrimaryButton label="Demo-App lokal öffnen" onPress={enterDemoMode} />
       </Card>
     </ScreenContainer>
   );

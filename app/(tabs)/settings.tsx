@@ -146,7 +146,7 @@ export default function SettingsScreen() {
       <Card>
         <Text style={[styles.cardTitle, { color: colors.text }]}>Datenschutz</Text>
         <Text style={[styles.body, { color: colors.mutedText }]}>
-          Platzhalter fuer spaetere Datenschutzinformationen.
+          Platzhalter für spätere Datenschutzinformationen.
         </Text>
       </Card>
 

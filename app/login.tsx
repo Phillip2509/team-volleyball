@@ -91,7 +91,7 @@ export default function LoginScreen() {
     }
 
     if (password !== confirmPassword) {
-      setMessage("Die beiden Passwoerter stimmen nicht ueberein.");
+      setMessage("Die beiden Passwörter stimmen nicht überein.");
       return;
     }
 
@@ -104,7 +104,7 @@ export default function LoginScreen() {
       setOtpCode("");
       setMode("verify");
       setResendCooldown(RESEND_COOLDOWN_SECONDS);
-      setMessage("Code versendet. Bitte pruefe deine E-Mail und gib den Code hier ein.");
+      setMessage("Code versendet. Bitte prüfe deine E-Mail und gib den Code hier ein.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Registrierung fehlgeschlagen.");
     } finally {
@@ -119,7 +119,7 @@ export default function LoginScreen() {
 
     const cleanCode = otpCode.trim();
     if (!/^\d{6,10}$/.test(cleanCode)) {
-      setMessage("Bitte gib den vollstaendigen Code aus deiner E-Mail ein.");
+      setMessage("Bitte gib den vollständigen Code aus deiner E-Mail ein.");
       return;
     }
 
@@ -130,7 +130,7 @@ export default function LoginScreen() {
       await reloadProfile();
       setMessage("Verifizierung erfolgreich. Du wirst jetzt weitergeleitet.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Der Code konnte nicht bestaetigt werden.");
+      setMessage(error instanceof Error ? error.message : "Der Code konnte nicht bestätigt werden.");
     } finally {
       setIsSubmitting(false);
     }
@@ -146,7 +146,7 @@ export default function LoginScreen() {
     try {
       await resendEmailOtp(normalizedEmail);
       setResendCooldown(RESEND_COOLDOWN_SECONDS);
-      setMessage("Neuer Code versendet. Bitte pruefe deine E-Mail.");
+      setMessage("Neuer Code versendet. Bitte prüfe deine E-Mail.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Der Code konnte nicht erneut gesendet werden.");
     } finally {
@@ -173,7 +173,7 @@ export default function LoginScreen() {
               ? "Anmelden"
               : mode === "register"
                 ? "Account erstellen"
-                : "Code bestaetigen"}
+                : "Code bestätigen"}
           </Text>
 
           {mode === "register" ? (
@@ -241,7 +241,7 @@ export default function LoginScreen() {
               autoComplete="new-password"
               editable={!isSubmitting}
               onChangeText={setConfirmPassword}
-              placeholder="Passwort bestaetigen"
+              placeholder="Passwort bestätigen"
               placeholderTextColor={colors.mutedText}
               secureTextEntry
               style={[
@@ -285,7 +285,7 @@ export default function LoginScreen() {
           {mode === "login" ? (
             <PrimaryButton
               disabled={isSubmitting}
-              label={isSubmitting ? "Anmeldung laeuft ..." : "Anmelden"}
+              label={isSubmitting ? "Anmeldung läuft ..." : "Anmelden"}
               onPress={handleSignIn}
             />
           ) : null}
@@ -302,7 +302,7 @@ export default function LoginScreen() {
             <>
               <PrimaryButton
                 disabled={isSubmitting}
-                label={isSubmitting ? "Code wird geprueft ..." : "Code bestaetigen"}
+                label={isSubmitting ? "Code wird geprüft ..." : "Code bestätigen"}
                 onPress={handleVerifyCode}
               />
               <PrimaryButton
@@ -330,7 +330,7 @@ export default function LoginScreen() {
             )}
           </View>
 
-          <PrimaryButton label="Demo-App lokal oeffnen" onPress={enterDemoMode} variant="secondary" />
+          <PrimaryButton label="Demo-App lokal öffnen" onPress={enterDemoMode} variant="secondary" />
         </Card>
       </ScreenContainer>
     </KeyboardAvoidingView>
