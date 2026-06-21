@@ -41,6 +41,8 @@ function RootNavigator() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="forgot-password" />
+      <Stack.Screen name="reset-password" />
       <Stack.Protected guard={!isConfigured && !isDemoMode}>
         <Stack.Screen name="setup" />
       </Stack.Protected>

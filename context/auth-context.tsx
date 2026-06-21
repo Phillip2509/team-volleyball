@@ -19,6 +19,8 @@ type AuthContextValue = {
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   verifyEmailOtp: (email: string, token: string) => Promise<void>;
   resendEmailOtp: (email: string) => Promise<void>;
+  requestPasswordReset: (email: string, redirectTo: string) => Promise<void>;
+  updatePassword: (password: string) => Promise<void>;
   signOut: () => Promise<void>;
   reloadProfile: () => Promise<void>;
   updateProfile: (displayName: string) => Promise<void>;
@@ -138,7 +140,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setIsDemoMode(false);
+      }
       setSession(nextSession);
       setIsLoading(false);
       if (nextSession) {
@@ -247,6 +252,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { error } = await supabase.auth.resend({
           email,
           type: "signup",
+        });
+
+        if (error) {
+          throw new Error(getAuthErrorMessage(error.message));
+        }
+      },
+      requestPasswordReset: async (email, redirectTo) => {
+        if (!supabase) {
+          throw new Error(supabaseConfig.message);
+        }
+
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo,
+        });
+
+        if (error) {
+          throw new Error(getAuthErrorMessage(error.message));
+        }
+      },
+      updatePassword: async (password) => {
+        if (!supabase) {
+          throw new Error(supabaseConfig.message);
+        }
+
+        const { error } = await supabase.auth.updateUser({
+          password,
         });
 
         if (error) {
