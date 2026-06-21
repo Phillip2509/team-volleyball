@@ -81,6 +81,42 @@ export function formatEventTime(isoValue: string) {
   }).format(date);
 }
 
+export function formatResponseTimestamp(isoValue: string | null) {
+  if (!isoValue) {
+    return "";
+  }
+
+  const date = new Date(isoValue);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const valueDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const dayDifference = Math.round((today - valueDay) / 86_400_000);
+  const time = new Intl.DateTimeFormat("de-DE", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+
+  if (dayDifference === 0) {
+    return `Heute, ${time} Uhr`;
+  }
+
+  if (dayDifference === 1) {
+    return `Gestern, ${time} Uhr`;
+  }
+
+  const dateLabel = new Intl.DateTimeFormat("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+
+  return `${dateLabel}, ${time} Uhr`;
+}
+
 export function splitIsoToLocalInputs(isoValue: string | null) {
   if (!isoValue) {
     return { date: "", time: "" };

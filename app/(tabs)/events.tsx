@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AppHeader } from "@/components/app-header";
 import { Card } from "@/components/card";
@@ -20,10 +20,13 @@ import type {
   TeamEventInput,
   TeamEventType,
   TeamEventWithResponse,
+  TeamMembershipWithProfile,
+  TeamRole,
 } from "@/types/team";
 import {
   formatEventDateTime,
   formatEventTime,
+  formatResponseTimestamp,
   getTodayInputDate,
   splitIsoToLocalInputs,
 } from "@/utils/event-dates";
@@ -35,9 +38,27 @@ import {
 } from "@/utils/format";
 
 type EventFormMode = "create" | "edit";
+type ParticipantResponseGroup = EventResponseValue | "open";
+
+type ParticipantOverviewEntry = {
+  displayName: string;
+  key: string;
+  note: string | null;
+  respondedAt: string | null;
+  response: EventResponseValue | null;
+  role: TeamRole;
+  updatedAt: string | null;
+  userId: string;
+};
 
 const EVENT_TYPE_OPTIONS: TeamEventType[] = ["training", "match", "team_event"];
 const RESPONSE_OPTIONS: EventResponseValue[] = ["accepted", "maybe", "declined"];
+const PARTICIPANT_GROUPS: { key: ParticipantResponseGroup; title: string }[] = [
+  { key: "accepted", title: "Zugesagt" },
+  { key: "maybe", title: "Vielleicht" },
+  { key: "declined", title: "Abgesagt" },
+  { key: "open", title: "Keine Antwort" },
+];
 
 function createEmptyInput(): TeamEventInput {
   return {
@@ -74,7 +95,7 @@ function createInputFromEvent(event: TeamEventWithResponse): TeamEventInput {
 export default function EventsScreen() {
   const { isDemoMode } = useAuth();
   const { colors } = useTheme();
-  const { currentMembership, currentTeam } = useTeam();
+  const { currentMembership, currentTeam, teamMembers } = useTeam();
   const {
     cancelEvent,
     cancelledEvents,
@@ -267,12 +288,63 @@ export default function EventsScreen() {
       />
 
       <ParticipantsModal
+        canShowResponseTimestamps={canManageEvents}
         event={participantsTarget}
         onClose={() => setParticipantsTarget(null)}
         responses={participantsTarget ? getEventResponsesWithProfiles(participantsTarget) : []}
+        teamMembers={teamMembers}
       />
     </ScreenContainer>
   );
+}
+
+function buildParticipantGroups(
+  responses: EventResponseWithProfile[],
+  teamMembers: TeamMembershipWithProfile[],
+): Record<ParticipantResponseGroup, ParticipantOverviewEntry[]> {
+  const responsesByUserId = new Map<string, EventResponseWithProfile>();
+
+  responses.forEach((response) => {
+    if (!responsesByUserId.has(response.userId)) {
+      responsesByUserId.set(response.userId, response);
+    }
+  });
+
+  const entriesFromResponses = Array.from(responsesByUserId.values()).map<ParticipantOverviewEntry>((response) => {
+    const membership = teamMembers.find((member) => member.userId === response.userId);
+    return {
+      displayName: membership?.profile.displayName ?? response.profile.displayName,
+      key: response.id,
+      note: response.note,
+      respondedAt: response.respondedAt,
+      response: response.response,
+      role: membership?.role ?? response.role,
+      updatedAt: response.updatedAt,
+      userId: response.userId,
+    };
+  });
+
+  const sortByName = (left: ParticipantOverviewEntry, right: ParticipantOverviewEntry) =>
+    left.displayName.localeCompare(right.displayName, "de");
+
+  return {
+    accepted: entriesFromResponses.filter((entry) => entry.response === "accepted").sort(sortByName),
+    maybe: entriesFromResponses.filter((entry) => entry.response === "maybe").sort(sortByName),
+    declined: entriesFromResponses.filter((entry) => entry.response === "declined").sort(sortByName),
+    open: teamMembers
+      .filter((member) => !responsesByUserId.has(member.userId))
+      .map<ParticipantOverviewEntry>((member) => ({
+        displayName: member.profile.displayName,
+        key: `open-${member.userId}`,
+        note: null,
+        respondedAt: null,
+        response: null,
+        role: member.role,
+        updatedAt: null,
+        userId: member.userId,
+      }))
+      .sort(sortByName),
+  };
 }
 
 function TeamEventCard({
@@ -323,12 +395,7 @@ function TeamEventCard({
       {event.description ? (
         <Text style={[styles.body, { color: colors.mutedText }]}>{event.description}</Text>
       ) : null}
-      <View style={styles.summaryRow}>
-        <StatusBadge status={`Zusagen: ${event.summary.accepted}`} />
-        <StatusBadge status={`Vielleicht: ${event.summary.maybe}`} />
-        <StatusBadge status={`Absagen: ${event.summary.declined}`} />
-        <StatusBadge status={`Offen: ${event.summary.open}`} />
-      </View>
+      <ParticipantSummaryButton event={event} onPress={onOpenParticipants} />
       <Text style={[styles.meta, { color: colors.mutedText }]}>
         Deine Rückmeldung: {getEventResponseLabel(event.ownResponse?.response ?? null)}
       </Text>
@@ -372,7 +439,6 @@ function TeamEventCard({
         </Pressable>
       </View>
       <View style={styles.actions}>
-        <PrimaryButton label="Teilnehmerübersicht" onPress={onOpenParticipants} variant="secondary" />
         {canManageEvents && event.status === "scheduled" ? (
           <>
             <PrimaryButton label="Bearbeiten" onPress={onEdit} variant="secondary" />
@@ -381,6 +447,47 @@ function TeamEventCard({
         ) : null}
       </View>
     </Card>
+  );
+}
+
+function ParticipantSummaryButton({
+  event,
+  onPress,
+}: {
+  event: TeamEventWithResponse;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  const items = [
+    { color: colors.success, count: event.summary.accepted, label: "Zugesagt", symbol: "+" },
+    { color: colors.warning, count: event.summary.maybe, label: "Vielleicht", symbol: "?" },
+    { color: colors.danger, count: event.summary.declined, label: "Abgesagt", symbol: "-" },
+    { color: colors.mutedText, count: event.summary.open, label: "Keine Antwort", symbol: "..." },
+  ];
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={[
+        styles.summaryButton,
+        { backgroundColor: colors.inputBackground, borderColor: colors.border },
+      ]}
+    >
+      <View style={styles.summaryHeader}>
+        <Text style={[styles.summaryTitle, { color: colors.text }]}>Rückmeldungen</Text>
+        <Text style={[styles.summaryHint, { color: colors.primary }]}>Teilnehmerübersicht öffnen</Text>
+      </View>
+      <View style={styles.summaryGrid}>
+        {items.map((item) => (
+          <View key={item.label} style={styles.summaryItem}>
+            <Text style={[styles.summaryIcon, { color: item.color }]}>{item.symbol}</Text>
+            <Text style={[styles.summaryValue, { color: colors.text }]}>{item.count}</Text>
+            <Text style={[styles.summaryLabel, { color: colors.mutedText }]}>{item.label}</Text>
+          </View>
+        ))}
+      </View>
+    </Pressable>
   );
 }
 
@@ -542,22 +649,22 @@ function ConfirmCancelModal({
 }
 
 function ParticipantsModal({
+  canShowResponseTimestamps,
   event,
   onClose,
   responses,
+  teamMembers,
 }: {
+  canShowResponseTimestamps: boolean;
   event: TeamEventWithResponse | null;
   onClose: () => void;
   responses: EventResponseWithProfile[];
+  teamMembers: TeamMembershipWithProfile[];
 }) {
   const { colors } = useTheme();
   const grouped = useMemo(
-    () => ({
-      accepted: responses.filter((response) => response.response === "accepted"),
-      maybe: responses.filter((response) => response.response === "maybe"),
-      declined: responses.filter((response) => response.response === "declined"),
-    }),
-    [responses],
+    () => buildParticipantGroups(responses, teamMembers),
+    [responses, teamMembers],
   );
 
   return (
@@ -566,12 +673,17 @@ function ParticipantsModal({
         <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.modalTitle, { color: colors.text }]}>Teilnehmerübersicht</Text>
           <Text style={[styles.body, { color: colors.mutedText }]}>{event?.title}</Text>
-          <ParticipantGroup title="Zugesagt" responses={grouped.accepted} />
-          <ParticipantGroup title="Vielleicht" responses={grouped.maybe} />
-          <ParticipantGroup title="Abgesagt" responses={grouped.declined} />
-          <Text style={[styles.body, { color: colors.mutedText }]}>
-            Keine Antwort: {event?.summary.open ?? 0}
-          </Text>
+          <ScrollView contentContainerStyle={styles.participantScrollContent} style={styles.participantScroll}>
+            {PARTICIPANT_GROUPS.map((group) => (
+              <ParticipantGroup
+                entries={grouped[group.key]}
+                groupKey={group.key}
+                key={group.key}
+                showTimestamps={canShowResponseTimestamps}
+                title={group.title}
+              />
+            ))}
+          </ScrollView>
           <PrimaryButton label="Schließen" onPress={onClose} variant="secondary" />
         </View>
       </View>
@@ -580,24 +692,52 @@ function ParticipantsModal({
 }
 
 function ParticipantGroup({
-  responses,
+  entries,
+  groupKey,
+  showTimestamps,
   title,
 }: {
-  responses: EventResponseWithProfile[];
+  entries: ParticipantOverviewEntry[];
+  groupKey: ParticipantResponseGroup;
+  showTimestamps: boolean;
   title: string;
 }) {
   const { colors } = useTheme();
+  const groupColors: Record<ParticipantResponseGroup, string> = {
+    accepted: colors.success,
+    maybe: colors.warning,
+    declined: colors.danger,
+    open: colors.mutedText,
+  };
+
   return (
-    <View style={styles.participantGroup}>
-      <Text style={[styles.fieldLabel, { color: colors.text }]}>{title}</Text>
-      {responses.length === 0 ? (
-        <Text style={[styles.meta, { color: colors.mutedText }]}>Keine Einträge</Text>
+    <View style={[styles.participantGroup, { borderColor: colors.border }]}>
+      <View style={styles.participantGroupHeader}>
+        <View style={[styles.participantGroupMarker, { backgroundColor: groupColors[groupKey] }]} />
+        <Text style={[styles.participantGroupTitle, { color: colors.text }]}>
+          {title} ({entries.length})
+        </Text>
+      </View>
+      {entries.length === 0 ? (
+        <Text style={[styles.emptyGroupText, { color: colors.mutedText }]}>Keine Einträge in dieser Gruppe.</Text>
       ) : (
-        responses.map((response) => (
-          <Text key={response.id} style={[styles.meta, { color: colors.mutedText }]}>
-            {response.profile.displayName} · {getTeamRoleLabel(response.role)}
-            {response.note ? ` · ${response.note}` : ""}
-          </Text>
+        entries.map((entry) => (
+          <View key={entry.key} style={[styles.participantRow, { borderColor: colors.border }]}>
+            <View style={styles.participantNameRow}>
+              <Text style={[styles.participantName, { color: colors.text }]}>{entry.displayName}</Text>
+              <Text style={[styles.rolePill, { backgroundColor: colors.inputBackground, color: colors.mutedText }]}>
+                {getTeamRoleLabel(entry.role)}
+              </Text>
+            </View>
+            {entry.note ? (
+              <Text style={[styles.participantNote, { color: colors.mutedText }]}>{entry.note}</Text>
+            ) : null}
+            {showTimestamps && entry.response ? (
+              <Text style={[styles.participantTime, { color: colors.mutedText }]}>
+                Rückmeldung: {formatResponseTimestamp(entry.updatedAt ?? entry.respondedAt)}
+              </Text>
+            ) : null}
+          </View>
         ))
       )}
     </View>
@@ -640,11 +780,51 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.sm,
     lineHeight: 20,
   },
-  summaryRow: {
+  summaryButton: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    gap: spacing.md,
+    marginTop: spacing.md,
+    padding: spacing.md,
+  },
+  summaryGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
-    marginTop: spacing.md,
+  },
+  summaryHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "space-between",
+  },
+  summaryHint: {
+    fontSize: fontSizes.xs,
+    fontWeight: "800",
+  },
+  summaryIcon: {
+    fontSize: fontSizes.md,
+    fontWeight: "900",
+  },
+  summaryItem: {
+    alignItems: "center",
+    flexBasis: "22%",
+    flexGrow: 1,
+    gap: 2,
+    minWidth: 96,
+  },
+  summaryLabel: {
+    fontSize: fontSizes.xs,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  summaryTitle: {
+    fontSize: fontSizes.sm,
+    fontWeight: "900",
+  },
+  summaryValue: {
+    fontSize: fontSizes.xl,
+    fontWeight: "900",
   },
   actions: {
     flexDirection: "row",
@@ -728,7 +908,66 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: spacing.md,
   },
+  emptyGroupText: {
+    fontSize: fontSizes.sm,
+    lineHeight: 20,
+  },
   participantGroup: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  participantGroupHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  participantGroupMarker: {
+    borderRadius: 999,
+    height: 10,
+    width: 10,
+  },
+  participantGroupTitle: {
+    fontSize: fontSizes.md,
+    fontWeight: "900",
+  },
+  participantName: {
+    flex: 1,
+    fontSize: fontSizes.md,
+    fontWeight: "800",
+  },
+  participantNameRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  participantNote: {
+    fontSize: fontSizes.sm,
+    lineHeight: 20,
+  },
+  participantRow: {
+    borderTopWidth: 1,
     gap: spacing.xs,
+    paddingTop: spacing.sm,
+  },
+  participantScroll: {
+    maxHeight: 520,
+  },
+  participantScrollContent: {
+    gap: spacing.md,
+    paddingBottom: spacing.xs,
+  },
+  participantTime: {
+    fontSize: fontSizes.xs,
+    fontWeight: "700",
+  },
+  rolePill: {
+    borderRadius: 999,
+    fontSize: fontSizes.xs,
+    fontWeight: "800",
+    overflow: "hidden",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
   },
 });
