@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "expo-router";
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Card } from "@/components/card";
@@ -14,7 +13,6 @@ type AuthMode = "login" | "register" | "verify";
 const RESEND_COOLDOWN_SECONDS = 45;
 
 export default function LoginScreen() {
-  const router = useRouter();
   const { colors } = useTheme();
   const { enterDemoMode, reloadProfile, resendEmailOtp, signIn, signUp, verifyEmailOtp } = useAuth();
   const [mode, setMode] = useState<AuthMode>("login");
@@ -326,14 +324,9 @@ export default function LoginScreen() {
                 <Text style={[styles.linkText, { color: colors.primary }]}>Zum Login</Text>
               </Pressable>
             ) : (
-              <>
-                <Pressable disabled={isSubmitting} onPress={() => resetFeedback("register")}>
-                  <Text style={[styles.linkText, { color: colors.primary }]}>Account erstellen</Text>
-                </Pressable>
-                <Pressable disabled={isSubmitting} onPress={() => router.push("/forgot-password")}>
-                  <Text style={[styles.linkText, { color: colors.primary }]}>Passwort vergessen?</Text>
-                </Pressable>
-              </>
+              <Pressable disabled={isSubmitting} onPress={() => resetFeedback("register")}>
+                <Text style={[styles.linkText, { color: colors.primary }]}>Account erstellen</Text>
+              </Pressable>
             )}
           </View>
 
@@ -383,7 +376,6 @@ const styles = StyleSheet.create({
   },
   links: {
     alignItems: "center",
-    gap: spacing.sm,
     marginVertical: spacing.md,
   },
   linkText: {
