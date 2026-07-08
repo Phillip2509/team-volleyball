@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AppHeader } from "@/components/app-header";
 import { Card } from "@/components/card";
@@ -7,16 +7,19 @@ import { PrimaryButton } from "@/components/primary-button";
 import { ScreenContainer } from "@/components/screen-container";
 import { SectionHeader } from "@/components/section-header";
 import { fontSizes, radius, spacing } from "@/constants/theme";
+import { useAuth } from "@/context/auth-context";
 import { useTeam } from "@/context/team-context";
 import { useTheme } from "@/context/theme-context";
 
 export default function TeamOnboardingScreen() {
   const { colors } = useTheme();
+  const { signOut } = useAuth();
   const { createTeam, joinTeamByCode } = useTeam();
   const [teamName, setTeamName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   async function handleCreateTeam() {
     setMessage("");
@@ -39,6 +42,21 @@ export default function TeamOnboardingScreen() {
       setMessage(error instanceof Error ? error.message : "Teambeitritt ist fehlgeschlagen.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleSignOut() {
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    try {
+      await signOut();
+    } catch (error) {
+      Alert.alert(
+        "Abmelden fehlgeschlagen",
+        error instanceof Error ? error.message : "Bitte versuche es erneut.",
+      );
+    } finally {
+      setIsSigningOut(false);
     }
   }
 
@@ -102,6 +120,13 @@ export default function TeamOnboardingScreen() {
 
       {isSubmitting ? <ActivityIndicator color={colors.primary} /> : null}
       {message ? <Text style={[styles.message, { color: colors.danger }]}>{message}</Text> : null}
+
+      <PrimaryButton
+        variant="secondary"
+        label={isSigningOut ? "Abmelden ..." : "Abmelden"}
+        onPress={handleSignOut}
+        disabled={isSubmitting || isSigningOut}
+      />
     </ScreenContainer>
   );
 }

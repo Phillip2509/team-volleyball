@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, TextInput } from "react-native";
+import { ActivityIndicator, Alert, StyleSheet, Text, TextInput } from "react-native";
 
 import { AppHeader } from "@/components/app-header";
 import { Card } from "@/components/card";
@@ -11,12 +11,13 @@ import { useTheme } from "@/context/theme-context";
 
 export default function ProfileSetupScreen() {
   const { colors } = useTheme();
-  const { profile, updateProfile } = useAuth();
+  const { profile, signOut, updateProfile } = useAuth();
   const [displayName, setDisplayName] = useState(
     profile?.displayName === "Neues Mitglied" ? "" : profile?.displayName ?? "",
   );
   const [message, setMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   async function saveProfile() {
     setMessage("");
@@ -27,6 +28,21 @@ export default function ProfileSetupScreen() {
       setMessage(error instanceof Error ? error.message : "Profil konnte nicht gespeichert werden.");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleSignOut() {
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    try {
+      await signOut();
+    } catch (error) {
+      Alert.alert(
+        "Abmelden fehlgeschlagen",
+        error instanceof Error ? error.message : "Bitte versuche es erneut.",
+      );
+    } finally {
+      setIsSigningOut(false);
     }
   }
 
@@ -65,6 +81,13 @@ export default function ProfileSetupScreen() {
           onPress={saveProfile}
         />
       </Card>
+
+      <PrimaryButton
+        variant="secondary"
+        label={isSigningOut ? "Abmelden ..." : "Abmelden"}
+        onPress={handleSignOut}
+        disabled={isSaving || isSigningOut}
+      />
     </ScreenContainer>
   );
 }
