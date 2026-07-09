@@ -1,5 +1,17 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import type { StyleProp, ViewStyle } from "react-native";
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 import { AppHeader } from "@/components/app-header";
 import { Card } from "@/components/card";
@@ -518,56 +530,82 @@ function EventFormModal({
 
   return (
     <Modal animationType="fade" onRequestClose={onCancel} transparent visible={visible}>
-      <View style={styles.modalBackdrop}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.modalBackdrop}
+      >
         <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.modalTitle, { color: colors.text }]}>
             {mode === "create" ? "Termin hinzufügen" : "Termin bearbeiten"}
           </Text>
-          <View style={styles.segment}>
-            {EVENT_TYPE_OPTIONS.map((type) => (
-              <Pressable
-                key={type}
-                onPress={() => updateField("eventType", type)}
-                style={[
-                  styles.segmentButton,
-                  {
-                    backgroundColor: input.eventType === type ? colors.primary : colors.inputBackground,
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
-                <Text style={[styles.actionText, { color: input.eventType === type ? colors.onPrimary : colors.text }]}>
-                  {getTeamEventTypeLabel(type)}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <FormInput label="Titel" value={input.title} onChangeText={(value) => updateField("title", value)} />
-          <FormInput
-            label="Beschreibung optional"
-            multiline
-            value={input.description}
-            onChangeText={(value) => updateField("description", value)}
-          />
-          <FormInput label="Ort optional" value={input.location} onChangeText={(value) => updateField("location", value)} />
-          <View style={styles.twoColumns}>
-            <FormInput label="Datum" value={input.date} onChangeText={(value) => updateField("date", value)} />
-            <FormInput label="Startzeit" value={input.startTime} onChangeText={(value) => updateField("startTime", value)} />
-          </View>
-          <View style={styles.twoColumns}>
-            <FormInput label="Endzeit optional" value={input.endTime} onChangeText={(value) => updateField("endTime", value)} />
+          <ScrollView
+            contentContainerStyle={styles.modalFormScrollContent}
+            keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
+            style={styles.modalFormScroll}
+          >
+            <View style={styles.segment}>
+              {EVENT_TYPE_OPTIONS.map((type) => (
+                <Pressable
+                  key={type}
+                  onPress={() => updateField("eventType", type)}
+                  style={[
+                    styles.segmentButton,
+                    {
+                      backgroundColor: input.eventType === type ? colors.primary : colors.inputBackground,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.actionText, { color: input.eventType === type ? colors.onPrimary : colors.text }]}>
+                    {getTeamEventTypeLabel(type)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <FormInput label="Titel" value={input.title} onChangeText={(value) => updateField("title", value)} />
             <FormInput
-              label="Fristzeit optional"
-              value={input.responseDeadlineTime}
-              onChangeText={(value) => updateField("responseDeadlineTime", value)}
+              label="Beschreibung optional"
+              multiline
+              value={input.description}
+              onChangeText={(value) => updateField("description", value)}
             />
-          </View>
-          <FormInput
-            label="Rückmeldefrist Datum optional"
-            value={input.responseDeadlineDate}
-            onChangeText={(value) => updateField("responseDeadlineDate", value)}
-          />
-          {errorMessage ? <Text style={[styles.error, { color: colors.danger }]}>{errorMessage}</Text> : null}
+            <FormInput label="Ort optional" value={input.location} onChangeText={(value) => updateField("location", value)} />
+            <View style={styles.twoColumns}>
+              <FormInput
+                label="Datum"
+                style={styles.twoColumnItem}
+                value={input.date}
+                onChangeText={(value) => updateField("date", value)}
+              />
+              <FormInput
+                label="Startzeit"
+                style={styles.twoColumnItem}
+                value={input.startTime}
+                onChangeText={(value) => updateField("startTime", value)}
+              />
+            </View>
+            <View style={styles.twoColumns}>
+              <FormInput
+                label="Endzeit optional"
+                style={styles.twoColumnItem}
+                value={input.endTime}
+                onChangeText={(value) => updateField("endTime", value)}
+              />
+              <FormInput
+                label="Fristzeit optional"
+                style={styles.twoColumnItem}
+                value={input.responseDeadlineTime}
+                onChangeText={(value) => updateField("responseDeadlineTime", value)}
+              />
+            </View>
+            <FormInput
+              label="Rückmeldefrist Datum optional"
+              value={input.responseDeadlineDate}
+              onChangeText={(value) => updateField("responseDeadlineDate", value)}
+            />
+            {errorMessage ? <Text style={[styles.error, { color: colors.danger }]}>{errorMessage}</Text> : null}
+          </ScrollView>
           {saving ? <ActivityIndicator color={colors.primary} /> : null}
           <View style={styles.modalActions}>
             <PrimaryButton label="Abbrechen" onPress={onCancel} variant="secondary" />
@@ -578,7 +616,7 @@ function EventFormModal({
             />
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -587,16 +625,18 @@ function FormInput({
   label,
   multiline,
   onChangeText,
+  style,
   value,
 }: {
   label: string;
   multiline?: boolean;
   onChangeText: (value: string) => void;
+  style?: StyleProp<ViewStyle>;
   value: string;
 }) {
   const { colors } = useTheme();
   return (
-    <View style={styles.field}>
+    <View style={[styles.field, style]}>
       <Text style={[styles.fieldLabel, { color: colors.text }]}>{label}</Text>
       <TextInput
         multiline={multiline}
@@ -874,6 +914,13 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     justifyContent: "flex-end",
   },
+  modalFormScroll: {
+    flexShrink: 1,
+  },
+  modalFormScrollContent: {
+    gap: spacing.md,
+    paddingBottom: spacing.xs,
+  },
   segment: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -907,6 +954,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.md,
+  },
+  twoColumnItem: {
+    flex: 1,
+    minWidth: 140,
   },
   emptyGroupText: {
     fontSize: fontSizes.sm,
