@@ -15,12 +15,22 @@ import { useTheme } from "@/context/theme-context";
 import { demoDataNotice, demoTeam, demoTeamMembers } from "@/data/demo-data";
 import type { TeamMembershipWithProfile, TeamRole } from "@/types/team";
 import { formatDateTime, getTeamRoleLabel } from "@/utils/format";
+import { hasRole } from "@/utils/roles";
 
 const ROLE_OPTIONS: TeamRole[] = ["player", "coach", "admin"];
+const ROLE_DISPLAY_ORDER: TeamRole[] = ["admin", "coach", "player"];
+
+function sortRolesForDisplay(roles: TeamRole[]): TeamRole[] {
+  return [...roles].sort(
+    (left, right) => ROLE_DISPLAY_ORDER.indexOf(left) - ROLE_DISPLAY_ORDER.indexOf(right),
+  );
+}
 
 type PendingRoleChange = {
   member: TeamMembershipWithProfile;
-  nextRole: TeamRole;
+  nextRoles: TeamRole[];
+  toggledRole: TeamRole;
+  isAdding: boolean;
 };
 
 export default function TeamScreen() {
@@ -34,12 +44,12 @@ export default function TeamScreen() {
     isMembersLoading,
     successMessage,
     teamMembers,
-    updateMemberRole,
+    updateMemberRoles,
     updatingMemberId,
   } = useTeam();
   const [pendingRoleChange, setPendingRoleChange] = useState<PendingRoleChange | null>(null);
   const [modalErrorMessage, setModalErrorMessage] = useState("");
-  const isCurrentUserAdmin = currentMembership?.role === "admin";
+  const isCurrentUserAdmin = hasRole(currentMembership, "admin");
 
   if (isDemoMode) {
     return (
@@ -103,14 +113,27 @@ export default function TeamScreen() {
           teamMembers.map((member) => (
             <RealTeamMemberRow
               canManageRoles={isCurrentUserAdmin}
-              currentUserId={currentMembership?.userId ?? ""}
               isUpdating={updatingMemberId === member.userId}
               key={member.id}
               member={member}
-              onChangeRole={(nextRole) => {
+              onToggleRole={(role) => {
+                const isActive = member.roles.includes(role);
+                const nextRoles = isActive
+                  ? member.roles.filter((existingRole) => existingRole !== role)
+                  : [...member.roles, role];
+
+                if (nextRoles.length === 0) {
+                  return;
+                }
+
                 clearMessages();
                 setModalErrorMessage("");
-                setPendingRoleChange({ member, nextRole });
+                setPendingRoleChange({
+                  isAdding: !isActive,
+                  member,
+                  nextRoles,
+                  toggledRole: role,
+                });
               }}
             />
           ))
@@ -134,21 +157,17 @@ export default function TeamScreen() {
             return;
           }
 
-          const { member, nextRole } = pendingRoleChange;
+          const { member, nextRoles } = pendingRoleChange;
           setModalErrorMessage("");
-          void updateMemberRole({
-            role: nextRole,
-            teamId: member.teamId,
-            userId: member.userId,
-          })
+          void updateMemberRoles(member.userId, nextRoles)
             .then(() => {
               setPendingRoleChange(null);
             })
-            .catch((error) => {
+            .catch((error: unknown) => {
               setModalErrorMessage(
                 error instanceof Error
                   ? error.message
-                  : "Die Rolle konnte nicht geändert werden.",
+                  : "Die Rollen konnten nicht geändert werden.",
               );
             });
         }}
@@ -173,13 +192,14 @@ function RoleChangeModal({
 }) {
   const { colors } = useTheme();
 
-  const oldRole = pendingRoleChange
-    ? getTeamRoleLabel(pendingRoleChange.member.role)
-    : "";
-  const newRole = pendingRoleChange
-    ? getTeamRoleLabel(pendingRoleChange.nextRole)
-    : "";
   const memberName = pendingRoleChange?.member.profile.displayName ?? "";
+  const toggledRoleLabel = pendingRoleChange
+    ? getTeamRoleLabel(pendingRoleChange.toggledRole)
+    : "";
+  const nextRolesLabel = pendingRoleChange
+    ? sortRolesForDisplay(pendingRoleChange.nextRoles).map(getTeamRoleLabel).join(", ")
+    : "";
+  const actionLabel = pendingRoleChange?.isAdding ? "hinzugefügt" : "entfernt";
 
   return (
     <Modal
@@ -199,9 +219,9 @@ function RoleChangeModal({
             },
           ]}
         >
-          <Text style={[styles.modalTitle, { color: colors.text }]}>Rolle ändern</Text>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>Rollen ändern</Text>
           <Text style={[styles.modalBody, { color: colors.mutedText }]}>
-            {memberName} wird von {oldRole} zu {newRole} geändert.
+            {memberName}: Rolle „{toggledRoleLabel}“ wird {actionLabel}. Neue Rollen: {nextRolesLabel}.
           </Text>
           {errorMessage ? (
             <Text style={[styles.modalError, { color: colors.danger }]}>
@@ -251,20 +271,17 @@ function RoleChangeModal({
 
 function RealTeamMemberRow({
   canManageRoles,
-  currentUserId,
   isUpdating,
   member,
-  onChangeRole,
+  onToggleRole,
 }: {
   canManageRoles: boolean;
-  currentUserId: string;
   isUpdating: boolean;
   member: TeamMembershipWithProfile;
-  onChangeRole: (role: TeamRole) => void;
+  onToggleRole: (role: TeamRole) => void;
 }) {
   const { colors } = useTheme();
-  const isOwnMembership = member.userId === currentUserId;
-  const canChangeThisRole = canManageRoles && !isOwnMembership;
+  const rolesLabel = sortRolesForDisplay(member.roles).map(getTeamRoleLabel).join(" · ");
 
   return (
     <View style={[styles.memberBlock, { borderBottomColor: colors.border }]}>
@@ -286,50 +303,42 @@ function RealTeamMemberRow({
             Beigetreten: {formatDateTime(member.joinedAt)}
           </Text>
         </View>
-        <StatusBadge status={getTeamRoleLabel(member.role)} />
+        <StatusBadge status={rolesLabel} />
       </View>
       {canManageRoles ? (
         <View style={styles.rolePanel}>
-          {isOwnMembership ? (
-            <Text style={[styles.roleHint, { color: colors.mutedText }]}>
-              Deine eigene Rolle kann hier nicht geändert werden.
-            </Text>
-          ) : (
-            <>
-              <Text style={[styles.roleHint, { color: colors.mutedText }]}>Rolle ändern</Text>
-              <View style={styles.roleActions}>
-                {ROLE_OPTIONS.map((role) => {
-                  const isCurrentRole = member.role === role;
-                  return (
-                    <Pressable
-                      disabled={!canChangeThisRole || isCurrentRole || isUpdating}
-                      key={role}
-                      onPress={() => onChangeRole(role)}
-                      style={[
-                        styles.roleButton,
-                        {
-                          backgroundColor: isCurrentRole
-                            ? colors.primary
-                            : colors.inputBackground,
-                          borderColor: colors.border,
-                        },
-                        (!canChangeThisRole || isCurrentRole || isUpdating) && styles.disabled,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.roleButtonText,
-                          { color: isCurrentRole ? colors.onPrimary : colors.text },
-                        ]}
-                      >
-                        {isUpdating && !isCurrentRole ? "..." : getTeamRoleLabel(role)}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </>
-          )}
+          <Text style={[styles.roleHint, { color: colors.mutedText }]}>Rollen bearbeiten</Text>
+          <View style={styles.roleActions}>
+            {ROLE_OPTIONS.map((role) => {
+              const isActive = member.roles.includes(role);
+              const wouldRemoveLastRole = isActive && member.roles.length <= 1;
+              const isDisabled = isUpdating || wouldRemoveLastRole;
+              return (
+                <Pressable
+                  disabled={isDisabled}
+                  key={role}
+                  onPress={() => onToggleRole(role)}
+                  style={[
+                    styles.roleButton,
+                    {
+                      backgroundColor: isActive ? colors.primary : colors.inputBackground,
+                      borderColor: colors.border,
+                    },
+                    isDisabled && styles.disabled,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.roleButtonText,
+                      { color: isActive ? colors.onPrimary : colors.text },
+                    ]}
+                  >
+                    {getTeamRoleLabel(role)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
       ) : null}
     </View>
