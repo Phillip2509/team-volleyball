@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
 import {
   ActivityIndicator,
@@ -131,7 +131,14 @@ export default function EventsScreen() {
   const [showEventForm, setShowEventForm] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<TeamEventWithResponse | null>(null);
   const [participantsTarget, setParticipantsTarget] = useState<TeamEventWithResponse | null>(null);
-  const [renderTimeMs] = useState(() => Date.now());
+  const [renderTimeMs, setRenderTimeMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRenderTimeMs(Date.now());
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const canManageEvents =
     currentMembership?.role === "admin" || currentMembership?.role === "coach";
@@ -384,7 +391,9 @@ function TeamEventCard({
   const deadlinePassed = event.responseDeadline
     ? nowMs > new Date(event.responseDeadline).getTime()
     : false;
-  const canRespond = event.status === "scheduled" && !deadlinePassed;
+  const startPassed = !event.responseDeadline && nowMs >= new Date(event.startsAt).getTime();
+  const responseClosed = deadlinePassed || startPassed;
+  const canRespond = event.status === "scheduled" && !responseClosed;
 
   return (
     <Card style={event.status === "cancelled" ? styles.cancelledCard : undefined}>
@@ -413,6 +422,9 @@ function TeamEventCard({
       </Text>
       {deadlinePassed && event.status === "scheduled" ? (
         <Text style={[styles.error, { color: colors.warning }]}>Die Rückmeldefrist ist abgelaufen.</Text>
+      ) : null}
+      {startPassed && event.status === "scheduled" ? (
+        <Text style={[styles.error, { color: colors.warning }]}>Rückmeldung geschlossen</Text>
       ) : null}
       {isResponding ? <ActivityIndicator color={colors.primary} /> : null}
       <View style={styles.actions}>
