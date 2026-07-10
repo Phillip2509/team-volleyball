@@ -224,6 +224,13 @@ begin
     raise exception 'AUTH_REQUIRED';
   end if;
 
+  -- Rollenänderungen desselben Teams serialisieren, damit zwei gleichzeitige
+  -- Admin-Entzüge nicht dazu führen können, dass kein Admin übrig bleibt.
+  perform 1
+  from public.teams
+  where id = input_team_id
+  for update;
+
   if not public.is_team_admin(input_team_id) then
     raise exception 'ADMIN_REQUIRED';
   end if;
