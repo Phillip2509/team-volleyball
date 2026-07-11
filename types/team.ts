@@ -17,17 +17,12 @@ export type TeamMember = {
   teamId: string;
   userId: string;
   role: TeamRole;
+  roles: TeamRole[];
   joinedAt: string;
 };
 
 export type TeamMembershipWithProfile = TeamMember & {
   profile: Profile;
-};
-
-export type UpdateMemberRoleParams = {
-  teamId: string;
-  userId: string;
-  role: TeamRole;
 };
 
 export type TeamEventType = "training" | "match" | "team_event";
