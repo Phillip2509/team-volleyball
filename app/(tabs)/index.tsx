@@ -61,7 +61,7 @@ export default function HomeScreen() {
             <Text style={[styles.body, { color: colors.mutedText }]}>{realNextEvent.location}</Text>
           ) : null}
           <Text style={[styles.body, { color: colors.mutedText }]}>
-            Deine Rückmeldung: {getEventResponseLabel(realNextEvent.ownResponse?.response ?? null)}
+            Deine Rückmeldung: {getEventResponseLabel(realNextEvent.ownResponse?.response ?? "accepted")}
           </Text>
           <View style={styles.actions}>
             <PrimaryButton

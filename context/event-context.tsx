@@ -13,8 +13,10 @@ import type {
   TeamEventInput,
   TeamEventType,
   TeamEventWithResponse,
+  TeamMembershipWithProfile,
 } from "@/types/team";
 import { toIsoFromLocalInput } from "@/utils/event-dates";
+import { hasRole } from "@/utils/roles";
 
 type EventContextValue = {
   events: TeamEventWithResponse[];
@@ -118,6 +120,9 @@ function getEventErrorMessage(message: string) {
   if (message.includes("RESPONSE_DEADLINE_PASSED")) {
     return "Die Rückmeldefrist ist abgelaufen.";
   }
+  if (message.includes("RESPONSE_CLOSED")) {
+    return "Die Rückmeldung ist geschlossen.";
+  }
   if (message.includes("EVENT_CANCELLED")) {
     return "Dieser Termin ist abgesagt.";
   }
@@ -171,25 +176,58 @@ function validateEventInput(input: TeamEventInput) {
   };
 }
 
+// Produktregel: Fehlt für ein aktuelles Teammitglied ein event_responses-Datensatz,
+// gilt das Mitglied als "Zugesagt" (Standard-Zusage). Nur explizite maybe/declined-
+// Antworten weichen davon ab. Antworten von Nutzer:innen, die kein aktuelles
+// Teammitglied mehr sind, fließen weder in die Zählung noch in ownResponse ein.
 function buildEventWithResponse(
   event: TeamEvent,
   responses: EventResponse[],
   currentUserId: string | null,
-  memberCount: number,
+  teamMembers: TeamMembershipWithProfile[],
 ): TeamEventWithResponse {
-  const accepted = responses.filter((response) => response.response === "accepted").length;
-  const maybe = responses.filter((response) => response.response === "maybe").length;
-  const declined = responses.filter((response) => response.response === "declined").length;
+  const responseByUserId = new Map<string, EventResponse>();
+  responses.forEach((response) => {
+    responseByUserId.set(response.userId, response);
+  });
+
+  let accepted = 0;
+  let acceptedPlayers = 0;
+  let acceptedCoaches = 0;
+  let maybe = 0;
+  let declined = 0;
+
+  teamMembers.forEach((member) => {
+    const explicitResponse = responseByUserId.get(member.userId);
+    const effectiveResponse: EventResponseValue = explicitResponse?.response ?? "accepted";
+
+    if (effectiveResponse === "accepted") {
+      accepted += 1;
+      if (hasRole(member, "player")) {
+        acceptedPlayers += 1;
+      }
+      if (hasRole(member, "coach")) {
+        acceptedCoaches += 1;
+      }
+    } else if (effectiveResponse === "maybe") {
+      maybe += 1;
+    } else if (effectiveResponse === "declined") {
+      declined += 1;
+    }
+  });
 
   return {
     ...event,
-    ownResponse: responses.find((response) => response.userId === currentUserId) ?? null,
+    // ownResponse bleibt null, wenn kein expliziter Datensatz existiert. Die UI
+    // interpretiert einen fehlenden ownResponse als effektive Zusage (siehe events.tsx).
+    ownResponse: currentUserId ? responseByUserId.get(currentUserId) ?? null : null,
     responses,
     summary: {
       accepted,
+      acceptedPlayers,
+      acceptedCoaches,
       maybe,
       declined,
-      open: Math.max(0, memberCount - accepted - maybe - declined),
     },
   };
 }
@@ -203,9 +241,6 @@ export function EventProvider({ children }: { children: ReactNode }) {
   const [savingEvent, setSavingEvent] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-
-  const memberCount = teamMembers.length;
-  const currentUserId = session?.user.id ?? null;
 
   const refreshEvents = useCallback(async () => {
     if (isDemoMode) {
@@ -225,7 +260,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
-        return buildEventWithResponse(mappedEvent, [], null, 0);
+        return buildEventWithResponse(mappedEvent, [], null, []);
       });
       setEvents(demoMappedEvents);
       setIsLoading(false);
@@ -257,7 +292,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
           mapEvent(row),
           (row.event_responses ?? []).map(mapResponse),
           session.user.id,
-          memberCount,
+          teamMembers,
         ),
       );
       setEvents(nextEvents);
@@ -266,7 +301,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [currentTeam, isDemoMode, memberCount, session?.user]);
+  }, [currentTeam, isDemoMode, session?.user, teamMembers]);
 
   useEffect(() => {
     void refreshEvents();
@@ -464,20 +499,21 @@ export function EventProvider({ children }: { children: ReactNode }) {
         }
       },
       getEventResponsesWithProfiles: (event) =>
-        event.responses.map((response) => {
-          const membership = teamMembers.find((member) => member.userId === response.userId);
-          return {
-            ...response,
-            profile: membership?.profile ?? {
-              id: response.userId,
-              displayName: "Unbekanntes Mitglied",
-              avatarUrl: null,
-              createdAt: "",
-              updatedAt: "",
-            },
-            role: membership?.role ?? "player",
-          };
-        }),
+        // Antworten ehemaliger Mitglieder (keine aktuelle Mitgliedschaft mehr) werden
+        // weder gezählt noch angezeigt.
+        event.responses
+          .map((response): EventResponseWithProfile | null => {
+            const membership = teamMembers.find((member) => member.userId === response.userId);
+            if (!membership) {
+              return null;
+            }
+            return {
+              ...response,
+              profile: membership.profile,
+              roles: membership.roles,
+            };
+          })
+          .filter((entry): entry is EventResponseWithProfile => entry !== null),
     }),
     [
       cancelledEvents,
