@@ -59,9 +59,10 @@ export type EventResponse = {
 
 export type EventResponseSummary = {
   accepted: number;
+  acceptedPlayers: number;
+  acceptedCoaches: number;
   maybe: number;
   declined: number;
-  open: number;
 };
 
 export type TeamEventWithResponse = TeamEvent & {
@@ -72,7 +73,7 @@ export type TeamEventWithResponse = TeamEvent & {
 
 export type EventResponseWithProfile = EventResponse & {
   profile: Profile;
-  role: TeamRole;
+  roles: TeamRole[];
 };
 
 export type TeamEventInput = {

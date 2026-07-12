@@ -50,15 +50,15 @@ import {
 } from "@/utils/format";
 
 type EventFormMode = "create" | "edit";
-type ParticipantResponseGroup = EventResponseValue | "open";
+type ParticipantResponseGroup = EventResponseValue;
 
 type ParticipantOverviewEntry = {
   displayName: string;
   key: string;
   note: string | null;
   respondedAt: string | null;
-  response: EventResponseValue | null;
-  role: TeamRole;
+  response: EventResponseValue;
+  roles: TeamRole[];
   updatedAt: string | null;
   userId: string;
 };
@@ -69,8 +69,19 @@ const PARTICIPANT_GROUPS: { key: ParticipantResponseGroup; title: string }[] = [
   { key: "accepted", title: "Zugesagt" },
   { key: "maybe", title: "Vielleicht" },
   { key: "declined", title: "Abgesagt" },
-  { key: "open", title: "Keine Antwort" },
 ];
+const ROLE_DISPLAY_ORDER: TeamRole[] = ["admin", "coach", "player"];
+
+function getCurrentTimeMs() {
+  return Date.now();
+}
+
+function getRolesLabel(roles: TeamRole[]): string {
+  return [...roles]
+    .sort((left, right) => ROLE_DISPLAY_ORDER.indexOf(left) - ROLE_DISPLAY_ORDER.indexOf(right))
+    .map(getTeamRoleLabel)
+    .join(" · ");
+}
 
 function createEmptyInput(): TeamEventInput {
   return {
@@ -111,7 +122,6 @@ export default function EventsScreen() {
   const {
     cancelEvent,
     cancelledEvents,
-    clearEventResponse,
     createEvent,
     errorMessage,
     getEventResponsesWithProfiles,
@@ -201,6 +211,15 @@ export default function EventsScreen() {
     }
   }
 
+  async function handleRespond(event: TeamEventWithResponse, response: EventResponseValue) {
+    try {
+      await respondToEvent(event.id, response);
+    } catch {
+      const currentTimeMs = getCurrentTimeMs();
+      setRenderTimeMs((previousTimeMs) => Math.max(previousTimeMs, currentTimeMs));
+    }
+  }
+
   return (
     <ScreenContainer>
       <AppHeader
@@ -240,10 +259,9 @@ export default function EventsScreen() {
             key={event.id}
             nowMs={renderTimeMs}
             onCancel={() => setCancelTarget(event)}
-            onClearResponse={() => void clearEventResponse(event.id)}
             onEdit={() => openEditModal(event)}
             onOpenParticipants={() => setParticipantsTarget(event)}
-            onRespond={(response) => void respondToEvent(event.id, response)}
+            onRespond={(response) => void handleRespond(event, response)}
           />
         ))
       )}
@@ -260,10 +278,9 @@ export default function EventsScreen() {
             key={event.id}
             nowMs={renderTimeMs}
             onCancel={() => setCancelTarget(event)}
-            onClearResponse={() => void clearEventResponse(event.id)}
             onEdit={() => openEditModal(event)}
             onOpenParticipants={() => setParticipantsTarget(event)}
-            onRespond={(response) => void respondToEvent(event.id, response)}
+            onRespond={(response) => void handleRespond(event, response)}
           />
         ))
       )}
@@ -279,7 +296,6 @@ export default function EventsScreen() {
               key={event.id}
               nowMs={renderTimeMs}
               onCancel={() => undefined}
-              onClearResponse={() => undefined}
               onEdit={() => undefined}
               onOpenParticipants={() => setParticipantsTarget(event)}
               onRespond={() => undefined}
@@ -317,29 +333,29 @@ export default function EventsScreen() {
   );
 }
 
+// Basis ist ausschließlich die aktuelle Teammitgliedschaft: jede Person erscheint
+// genau 1x mit ihrer effektiven Antwort (expliziter Datensatz, sonst Standard-Zusage).
 function buildParticipantGroups(
   responses: EventResponseWithProfile[],
   teamMembers: TeamMembershipWithProfile[],
 ): Record<ParticipantResponseGroup, ParticipantOverviewEntry[]> {
-  const responsesByUserId = new Map<string, EventResponseWithProfile>();
-
+  const responseByUserId = new Map<string, EventResponseWithProfile>();
   responses.forEach((response) => {
-    if (!responsesByUserId.has(response.userId)) {
-      responsesByUserId.set(response.userId, response);
-    }
+    responseByUserId.set(response.userId, response);
   });
 
-  const entriesFromResponses = Array.from(responsesByUserId.values()).map<ParticipantOverviewEntry>((response) => {
-    const membership = teamMembers.find((member) => member.userId === response.userId);
+  const entries = teamMembers.map<ParticipantOverviewEntry>((member) => {
+    const explicitResponse = responseByUserId.get(member.userId);
+    const effectiveResponse: EventResponseValue = explicitResponse?.response ?? "accepted";
     return {
-      displayName: membership?.profile.displayName ?? response.profile.displayName,
-      key: response.id,
-      note: response.note,
-      respondedAt: response.respondedAt,
-      response: response.response,
-      role: membership?.role ?? response.role,
-      updatedAt: response.updatedAt,
-      userId: response.userId,
+      displayName: member.profile.displayName,
+      key: explicitResponse?.id ?? `default-${member.userId}`,
+      note: explicitResponse?.note ?? null,
+      respondedAt: explicitResponse?.respondedAt ?? null,
+      response: effectiveResponse,
+      roles: member.roles,
+      updatedAt: explicitResponse?.updatedAt ?? null,
+      userId: member.userId,
     };
   });
 
@@ -347,22 +363,9 @@ function buildParticipantGroups(
     left.displayName.localeCompare(right.displayName, "de");
 
   return {
-    accepted: entriesFromResponses.filter((entry) => entry.response === "accepted").sort(sortByName),
-    maybe: entriesFromResponses.filter((entry) => entry.response === "maybe").sort(sortByName),
-    declined: entriesFromResponses.filter((entry) => entry.response === "declined").sort(sortByName),
-    open: teamMembers
-      .filter((member) => !responsesByUserId.has(member.userId))
-      .map<ParticipantOverviewEntry>((member) => ({
-        displayName: member.profile.displayName,
-        key: `open-${member.userId}`,
-        note: null,
-        respondedAt: null,
-        response: null,
-        role: member.role,
-        updatedAt: null,
-        userId: member.userId,
-      }))
-      .sort(sortByName),
+    accepted: entries.filter((entry) => entry.response === "accepted").sort(sortByName),
+    maybe: entries.filter((entry) => entry.response === "maybe").sort(sortByName),
+    declined: entries.filter((entry) => entry.response === "declined").sort(sortByName),
   };
 }
 
@@ -372,7 +375,6 @@ function TeamEventCard({
   isResponding,
   nowMs,
   onCancel,
-  onClearResponse,
   onEdit,
   onOpenParticipants,
   onRespond,
@@ -382,7 +384,6 @@ function TeamEventCard({
   isResponding: boolean;
   nowMs: number;
   onCancel: () => void;
-  onClearResponse: () => void;
   onEdit: () => void;
   onOpenParticipants: () => void;
   onRespond: (response: EventResponseValue) => void;
@@ -394,6 +395,8 @@ function TeamEventCard({
   const startPassed = !event.responseDeadline && nowMs >= new Date(event.startsAt).getTime();
   const responseClosed = deadlinePassed || startPassed;
   const canRespond = event.status === "scheduled" && !responseClosed;
+  // Fehlender ownResponse-Datensatz gilt als effektive Zusage (Standard-Zusage).
+  const effectiveOwnResponse: EventResponseValue = event.ownResponse?.response ?? "accepted";
 
   return (
     <Card style={event.status === "cancelled" ? styles.cancelledCard : undefined}>
@@ -418,7 +421,7 @@ function TeamEventCard({
       ) : null}
       <ParticipantSummaryButton event={event} onPress={onOpenParticipants} />
       <Text style={[styles.meta, { color: colors.mutedText }]}>
-        Deine Rückmeldung: {getEventResponseLabel(event.ownResponse?.response ?? null)}
+        Deine Rückmeldung: {getEventResponseLabel(effectiveOwnResponse)}
       </Text>
       {deadlinePassed && event.status === "scheduled" ? (
         <Text style={[styles.error, { color: colors.warning }]}>Die Rückmeldefrist ist abgelaufen.</Text>
@@ -429,7 +432,7 @@ function TeamEventCard({
       {isResponding ? <ActivityIndicator color={colors.primary} /> : null}
       <View style={styles.actions}>
         {RESPONSE_OPTIONS.map((response) => {
-          const isActive = event.ownResponse?.response === response;
+          const isActive = effectiveOwnResponse === response;
           return (
             <Pressable
               disabled={!canRespond || isResponding}
@@ -450,17 +453,6 @@ function TeamEventCard({
             </Pressable>
           );
         })}
-        <Pressable
-          disabled={!canRespond || !event.ownResponse || isResponding}
-          onPress={onClearResponse}
-          style={[
-            styles.actionButton,
-            { backgroundColor: colors.inputBackground, borderColor: colors.border },
-            (!canRespond || !event.ownResponse || isResponding) && styles.disabled,
-          ]}
-        >
-          <Text style={[styles.actionText, { color: colors.text }]}>Zurücksetzen</Text>
-        </Pressable>
       </View>
       <View style={styles.actions}>
         {canManageEvents && event.status === "scheduled" ? (
@@ -483,10 +475,9 @@ function ParticipantSummaryButton({
 }) {
   const { colors } = useTheme();
   const items = [
-    { color: colors.success, count: event.summary.accepted, label: "Zugesagt", symbol: "+" },
-    { color: colors.warning, count: event.summary.maybe, label: "Vielleicht", symbol: "?" },
-    { color: colors.danger, count: event.summary.declined, label: "Abgesagt", symbol: "-" },
-    { color: colors.mutedText, count: event.summary.open, label: "Keine Antwort", symbol: "..." },
+    { color: colors.success, count: event.summary.accepted, label: "Gesamt", symbol: "+" },
+    { color: colors.primary, count: event.summary.acceptedPlayers, label: "Spieler", symbol: "S" },
+    { color: colors.primary, count: event.summary.acceptedCoaches, label: "Trainer", symbol: "T" },
   ];
 
   return (
@@ -759,7 +750,6 @@ function ParticipantGroup({
     accepted: colors.success,
     maybe: colors.warning,
     declined: colors.danger,
-    open: colors.mutedText,
   };
 
   return (
@@ -778,13 +768,13 @@ function ParticipantGroup({
             <View style={styles.participantNameRow}>
               <Text style={[styles.participantName, { color: colors.text }]}>{entry.displayName}</Text>
               <Text style={[styles.rolePill, { backgroundColor: colors.inputBackground, color: colors.mutedText }]}>
-                {getTeamRoleLabel(entry.role)}
+                {getRolesLabel(entry.roles)}
               </Text>
             </View>
             {entry.note ? (
               <Text style={[styles.participantNote, { color: colors.mutedText }]}>{entry.note}</Text>
             ) : null}
-            {showTimestamps && entry.response ? (
+            {showTimestamps && entry.respondedAt ? (
               <Text style={[styles.participantTime, { color: colors.mutedText }]}>
                 Rückmeldung: {formatResponseTimestamp(entry.updatedAt ?? entry.respondedAt)}
               </Text>
