@@ -8,6 +8,7 @@ import type {
   EventResponse,
   EventResponseValue,
   EventResponseWithProfile,
+  CreateTeamEventsParams,
   SaveTeamEventParams,
   TeamEvent,
   TeamEventInput,
@@ -31,6 +32,7 @@ type EventContextValue = {
   successMessage: string;
   refreshEvents: () => Promise<void>;
   createEvent: (params: SaveTeamEventParams) => Promise<TeamEvent>;
+  createEvents: (params: CreateTeamEventsParams) => Promise<TeamEvent[]>;
   updateEvent: (params: SaveTeamEventParams) => Promise<TeamEvent>;
   cancelEvent: (eventId: string) => Promise<TeamEvent>;
   respondToEvent: (eventId: string, response: EventResponseValue, note?: string) => Promise<EventResponse>;
@@ -120,6 +122,24 @@ function getEventErrorMessage(message: string) {
   if (message.includes("RESPONSE_DEADLINE_PASSED")) {
     return "Die Rückmeldefrist ist abgelaufen.";
   }
+  if (message.includes("DUPLICATE_EVENT_CONFLICT")) {
+    return "Für mindestens einen ausgewählten Zeitpunkt gibt es bereits einen geplanten Termin.";
+  }
+  if (message.includes("TOO_MANY_OCCURRENCES")) {
+    return "Du kannst maximal 20 Termine auf einmal erstellen.";
+  }
+  if (message.includes("INVALID_OCCURRENCES")) {
+    return "Die ausgewählten Termine sind ungültig.";
+  }
+  if (message.includes("INVALID_RESPONSE_DEADLINE_ORDER")) {
+    return "Die Rückmeldefrist muss vor dem Terminstart liegen.";
+  }
+  if (message.includes("RESPONSE_DEADLINE_ALREADY_PASSED")) {
+    return "Die Rückmeldefrist muss in der Zukunft liegen.";
+  }
+  if (message.includes("INVALID_RESPONSE_DEADLINE")) {
+    return "Die Rückmeldefrist muss vor dem Terminstart liegen.";
+  }
   if (message.includes("RESPONSE_CLOSED")) {
     return "Die Rückmeldung ist geschlossen.";
   }
@@ -168,12 +188,91 @@ function validateEventInput(input: TeamEventInput) {
   if ((input.responseDeadlineDate.trim() || input.responseDeadlineTime.trim()) && !responseDeadline) {
     throw new Error("Die Rückmeldefrist ist ungültig.");
   }
+  if (responseDeadline && new Date(responseDeadline) >= new Date(startsAt)) {
+    throw new Error("Die Rückmeldefrist muss vor dem Terminstart liegen.");
+  }
 
   return {
     startsAt,
     endsAt,
     responseDeadline,
   };
+}
+
+function buildEventOccurrences({
+  deadlineMode,
+  input,
+  selectedDates,
+  teamDefaultDeadlineTime,
+}: CreateTeamEventsParams) {
+  const uniqueDates = [...new Set(selectedDates.map((date) => date.trim()).filter(Boolean))].sort();
+  const nowMs = Date.now();
+
+  if (uniqueDates.length < 1) {
+    throw new Error("Bitte wähle mindestens ein Datum aus.");
+  }
+
+  if (uniqueDates.length > 20) {
+    throw new Error("Du kannst maximal 20 Termine auf einmal erstellen.");
+  }
+
+  return uniqueDates.map((date) => {
+    const startsAt = toIsoFromLocalInput(date, input.startTime);
+    if (!startsAt) {
+      throw new Error("Die Startzeit ist ungültig.");
+    }
+
+    if (new Date(startsAt).getTime() <= nowMs) {
+      throw new Error("Beim Erstellen muss der Terminstart in der Zukunft liegen.");
+    }
+
+    const endsAt = input.endTime.trim() ? toIsoFromLocalInput(date, input.endTime) : null;
+    if (input.endTime.trim() && !endsAt) {
+      throw new Error("Die Endzeit ist ungültig.");
+    }
+    if (endsAt && new Date(endsAt) <= new Date(startsAt)) {
+      throw new Error("Die Endzeit muss nach der Startzeit liegen.");
+    }
+
+    let responseDeadline: string | null = null;
+    if (deadlineMode === "team_default") {
+      if (!teamDefaultDeadlineTime) {
+        throw new Error("Der Teamstandard für die Rückmeldefrist ist nicht vollständig.");
+      }
+      responseDeadline = toIsoFromLocalInput(date, teamDefaultDeadlineTime);
+      if (!responseDeadline) {
+        throw new Error("Die Standard-Rückmeldefrist ist ungültig.");
+      }
+      if (new Date(responseDeadline) >= new Date(startsAt)) {
+        throw new Error("Die Standard-Rückmeldefrist liegt nicht vor dem Terminbeginn.");
+      }
+      if (new Date(responseDeadline).getTime() <= nowMs) {
+        throw new Error("Die Standard-Rückmeldefrist ist für mindestens einen ausgewählten Termin bereits abgelaufen.");
+      }
+    } else if (deadlineMode === "custom") {
+      if (uniqueDates.length > 1) {
+        throw new Error("Individuelle Fristen kannst du nach der Erstellung in den einzelnen Terminen festlegen.");
+      }
+      responseDeadline = input.responseDeadlineDate.trim() || input.responseDeadlineTime.trim()
+        ? toIsoFromLocalInput(input.responseDeadlineDate, input.responseDeadlineTime)
+        : null;
+      if ((input.responseDeadlineDate.trim() || input.responseDeadlineTime.trim()) && !responseDeadline) {
+        throw new Error("Die Rückmeldefrist ist ungültig.");
+      }
+      if (responseDeadline && new Date(responseDeadline) >= new Date(startsAt)) {
+        throw new Error("Die Rückmeldefrist muss vor dem Terminstart liegen.");
+      }
+      if (responseDeadline && new Date(responseDeadline).getTime() <= nowMs) {
+        throw new Error("Die Rückmeldefrist muss in der Zukunft liegen.");
+      }
+    }
+
+    return {
+      ends_at: endsAt,
+      response_deadline: responseDeadline,
+      starts_at: startsAt,
+    };
+  });
 }
 
 // Produktregel: Fehlt für ein aktuelles Teammitglied ein event_responses-Datensatz,
@@ -230,6 +329,12 @@ function buildEventWithResponse(
       declined,
     },
   };
+}
+
+function sortEventsByStartDate(eventsToSort: TeamEventWithResponse[]) {
+  return [...eventsToSort].sort(
+    (left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime(),
+  );
 }
 
 export function EventProvider({ children }: { children: ReactNode }) {
@@ -344,10 +449,11 @@ export function EventProvider({ children }: { children: ReactNode }) {
         setSuccessMessage("");
       },
       createEvent: async ({ input, teamId }) => {
-        if (!supabase || isDemoMode) {
+        if (!supabase || isDemoMode || !session?.user) {
           throw new Error("Supabase ist nicht konfiguriert.");
         }
 
+        const currentUserId = session.user.id;
         const { startsAt, endsAt, responseDeadline } = validateEventInput(input);
         setSavingEvent(true);
         setErrorMessage("");
@@ -367,12 +473,86 @@ export function EventProvider({ children }: { children: ReactNode }) {
             console.error("CREATE_EVENT_ERROR", error);
             throw new Error(getEventErrorMessage(error.message));
           }
-          await refreshEvents();
+          const createdEvent = mapEvent(data as EventRow);
+          setEvents((currentEvents) => {
+            const mergedEvents = new Map(currentEvents.map((event) => [event.id, event]));
+            mergedEvents.set(
+              createdEvent.id,
+              buildEventWithResponse(createdEvent, [], currentUserId, teamMembers),
+            );
+            return sortEventsByStartDate(Array.from(mergedEvents.values()));
+          });
+          try {
+            await refreshEvents();
+          } catch (refreshError) {
+            console.error("REFRESH_EVENTS_AFTER_CREATE_ERROR", refreshError);
+          }
+          setErrorMessage("");
           setSuccessMessage("Termin wurde erstellt.");
-          return mapEvent(data as EventRow);
+          return createdEvent;
         } catch (error) {
           const message =
             error instanceof Error ? error.message : "Termin konnte nicht erstellt werden.";
+          setErrorMessage(message);
+          throw new Error(message);
+        } finally {
+          setSavingEvent(false);
+        }
+      },
+      createEvents: async (params) => {
+        if (!supabase || isDemoMode || !session?.user) {
+          throw new Error("Supabase ist nicht konfiguriert.");
+        }
+
+        const currentUserId = session.user.id;
+        if (params.input.title.trim().length < 2) {
+          throw new Error("Bitte gib einen Titel mit mindestens 2 Zeichen ein.");
+        }
+
+        const occurrences = buildEventOccurrences(params);
+        setSavingEvent(true);
+        setErrorMessage("");
+        setSuccessMessage("");
+        try {
+          const { data, error } = await supabase.rpc("create_team_events", {
+            input_allow_duplicates: Boolean(params.allowDuplicates),
+            input_description: params.input.description,
+            input_event_type: params.input.eventType,
+            input_location: params.input.location,
+            input_occurrences: occurrences,
+            input_team_id: params.teamId,
+            input_title: params.input.title,
+          });
+          if (error) {
+            console.error("CREATE_EVENTS_ERROR", error);
+            throw new Error(getEventErrorMessage(error.message));
+          }
+          const createdEvents = ((data ?? []) as EventRow[]).map(mapEvent);
+          setEvents((currentEvents) => {
+            const mergedEvents = new Map(currentEvents.map((event) => [event.id, event]));
+            createdEvents.forEach((createdEvent) => {
+              mergedEvents.set(
+                createdEvent.id,
+                buildEventWithResponse(createdEvent, [], currentUserId, teamMembers),
+              );
+            });
+            return sortEventsByStartDate(Array.from(mergedEvents.values()));
+          });
+          try {
+            await refreshEvents();
+          } catch (refreshError) {
+            console.error("REFRESH_EVENTS_AFTER_CREATE_ERROR", refreshError);
+          }
+          setErrorMessage("");
+          setSuccessMessage(
+            createdEvents.length === 1
+              ? "Termin wurde erstellt."
+              : `${createdEvents.length} Termine wurden erstellt.`,
+          );
+          return createdEvents;
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Termine konnten nicht erstellt werden.";
           setErrorMessage(message);
           throw new Error(message);
         } finally {

@@ -23,6 +23,7 @@ type TeamContextValue = {
   joinTeamByCode: (joinCode: string) => Promise<Team>;
   clearMessages: () => void;
   updateMemberRoles: (userId: string, roles: TeamRole[]) => Promise<TeamMember>;
+  updateTeamDefaultResponseDeadline: (enabled: boolean, time: string | null) => Promise<Team>;
 };
 
 type TeamRow = {
@@ -31,6 +32,8 @@ type TeamRow = {
   join_code: string;
   created_by: string;
   accent_color: string | null;
+  default_response_deadline_enabled?: boolean | null;
+  default_response_deadline_time?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -75,6 +78,10 @@ function mapTeam(row: TeamRow): Team {
     joinCode: row.join_code,
     createdBy: row.created_by,
     accentColor: row.accent_color,
+    defaultResponseDeadlineEnabled: Boolean(row.default_response_deadline_enabled),
+    defaultResponseDeadlineTime: row.default_response_deadline_time
+      ? row.default_response_deadline_time.slice(0, 5)
+      : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -142,6 +149,14 @@ function getTeamErrorMessage(message: string) {
 
   if (message.includes("INVALID_TEAM_NAME")) {
     return "Der Teamname muss zwischen 2 und 80 Zeichen lang sein.";
+  }
+
+  if (message.includes("INVALID_DEFAULT_RESPONSE_DEADLINE")) {
+    return "Die Standard-Rückmeldefrist ist ungültig.";
+  }
+
+  if (message.includes("COACH_OR_ADMIN_REQUIRED")) {
+    return "Nur Admins und Trainer dürfen diese Einstellung ändern.";
   }
 
   if (message.includes("AUTH_REQUIRED")) {
@@ -245,7 +260,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       const { data, error } = await supabase
         .from("team_members")
         .select(
-          "id, team_id, user_id, role, joined_at, team_member_roles ( role ), teams(id, name, join_code, created_by, accent_color, created_at, updated_at)",
+          "id, team_id, user_id, role, joined_at, team_member_roles ( role ), teams(id, name, join_code, created_by, accent_color, default_response_deadline_enabled, default_response_deadline_time, created_at, updated_at)",
         )
         .eq("user_id", session.user.id);
 
@@ -380,6 +395,41 @@ export function TeamProvider({ children }: { children: ReactNode }) {
           throw new Error(message);
         } finally {
           setUpdatingMemberId(null);
+        }
+      },
+      updateTeamDefaultResponseDeadline: async (enabled, time) => {
+        if (!supabase || !session?.user || !currentTeam || isDemoMode) {
+          throw new Error("Supabase ist nicht konfiguriert oder du bist nicht angemeldet.");
+        }
+
+        setErrorMessage("");
+        setSuccessMessage("");
+
+        try {
+          const { data, error } = await supabase.rpc("update_team_default_response_deadline", {
+            input_enabled: enabled,
+            input_team_id: currentTeam.id,
+            input_time: time,
+          });
+
+          if (error) {
+            console.error("UPDATE_TEAM_DEFAULT_RESPONSE_DEADLINE_ERROR", error);
+            throw new Error(getTeamErrorMessage(error.message));
+          }
+
+          const updatedTeam = mapTeam(data as TeamRow);
+          setTeams((currentTeams) =>
+            currentTeams.map((team) => (team.id === updatedTeam.id ? updatedTeam : team)),
+          );
+          setSuccessMessage("Standard-Rückmeldefrist gespeichert.");
+          return updatedTeam;
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Die Standard-Rückmeldefrist konnte nicht gespeichert werden.";
+          setErrorMessage(message);
+          throw new Error(message);
         }
       },
     }),

@@ -4,6 +4,7 @@ import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from "r
 
 import { AppHeader } from "@/components/app-header";
 import { Card } from "@/components/card";
+import { TimePickerField } from "@/components/events/time-picker-field";
 import { PrimaryButton } from "@/components/primary-button";
 import { ScreenContainer } from "@/components/screen-container";
 import { fontSizes, radius, spacing } from "@/constants/theme";
@@ -11,6 +12,7 @@ import { useAuth } from "@/context/auth-context";
 import { useTeam } from "@/context/team-context";
 import { useTheme } from "@/context/theme-context";
 import { getTeamRoleLabel } from "@/utils/format";
+import { hasRole } from "@/utils/roles";
 
 export default function SettingsScreen() {
   const { colors, preference, setPreference, systemTheme } = useTheme();
@@ -24,10 +26,27 @@ export default function SettingsScreen() {
     updateProfile,
     user,
   } = useAuth();
-  const { currentMembership, currentTeam, refreshMembers } = useTeam();
+  const { currentMembership, currentTeam, refreshMembers, updateTeamDefaultResponseDeadline } = useTeam();
   const [displayName, setDisplayName] = useState(profile?.displayName ?? "");
   const [statusMessage, setStatusMessage] = useState("");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [deadlineDraft, setDeadlineDraft] = useState({
+    enabled: false,
+    teamId: "",
+    time: "16:00",
+  });
+  const [isSavingDeadline, setIsSavingDeadline] = useState(false);
+
+  if ((currentTeam?.id ?? "") !== deadlineDraft.teamId) {
+    setDeadlineDraft({
+      enabled: Boolean(currentTeam?.defaultResponseDeadlineEnabled),
+      teamId: currentTeam?.id ?? "",
+      time: currentTeam?.defaultResponseDeadlineTime ?? "16:00",
+    });
+  }
+
+  const canManageTeamSettings =
+    currentMembership ? hasRole(currentMembership, "admin") || hasRole(currentMembership, "coach") : false;
 
   async function handleSignOut() {
     try {
@@ -52,6 +71,26 @@ export default function SettingsScreen() {
       setStatusMessage(error instanceof Error ? error.message : "Profil konnte nicht gespeichert werden.");
     } finally {
       setIsSavingProfile(false);
+    }
+  }
+
+  async function saveDefaultDeadline() {
+    setStatusMessage("");
+    setIsSavingDeadline(true);
+    try {
+      await updateTeamDefaultResponseDeadline(
+        deadlineDraft.enabled,
+        deadlineDraft.enabled ? deadlineDraft.time : null,
+      );
+      setStatusMessage("Standard-Rückmeldefrist wurde gespeichert.");
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error
+          ? error.message
+          : "Standard-Rückmeldefrist konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setIsSavingDeadline(false);
     }
   }
 
@@ -140,6 +179,72 @@ export default function SettingsScreen() {
           <Text style={[styles.body, { color: colors.mutedText }]}>
             {isDemoMode ? "Lokale Demo-Teamdaten." : "Noch kein Team verbunden."}
           </Text>
+        )}
+      </Card>
+
+      <Card>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>Standard-Rückmeldefrist</Text>
+        {currentTeam ? (
+          <>
+            <Text style={[styles.body, { color: colors.mutedText }]}>
+              {deadlineDraft.enabled
+                ? `Rückmeldungen sind am Veranstaltungstag bis ${deadlineDraft.time} Uhr möglich.`
+                : "Es wird keine automatische Rückmeldefrist gesetzt. Individuelle Fristen kannst du beim Erstellen oder Bearbeiten eines Termins festlegen."}
+            </Text>
+            {canManageTeamSettings ? (
+              <>
+                <View style={styles.segment}>
+                  <Pressable
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: deadlineDraft.enabled }}
+                    onPress={() =>
+                      setDeadlineDraft((currentDraft) => ({
+                        ...currentDraft,
+                        enabled: !currentDraft.enabled,
+                      }))
+                    }
+                    style={[
+                      styles.segmentButton,
+                      {
+                        backgroundColor: deadlineDraft.enabled ? colors.primary : colors.inputBackground,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.segmentText,
+                        { color: deadlineDraft.enabled ? colors.onPrimary : colors.text },
+                      ]}
+                    >
+                      Am Veranstaltungstag
+                    </Text>
+                  </Pressable>
+                </View>
+                {deadlineDraft.enabled ? (
+                  <TimePickerField
+                    fallbackTime="16:00"
+                    label="Uhrzeit"
+                    onChange={(value) =>
+                      setDeadlineDraft((currentDraft) => ({ ...currentDraft, time: value }))
+                    }
+                    value={deadlineDraft.time}
+                  />
+                ) : null}
+                <PrimaryButton
+                  disabled={isSavingDeadline}
+                  label={isSavingDeadline ? "Wird gespeichert ..." : "Standard speichern"}
+                  onPress={() => void saveDefaultDeadline()}
+                />
+              </>
+            ) : (
+              <Text style={[styles.body, { color: colors.mutedText }]}>
+                Nur Admins und Trainer können diese Team-Einstellung ändern.
+              </Text>
+            )}
+          </>
+        ) : (
+          <Text style={[styles.body, { color: colors.mutedText }]}>Noch kein Team verbunden.</Text>
         )}
       </Card>
 

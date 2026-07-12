@@ -6,6 +6,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,6 +17,8 @@ import {
 import { AppHeader } from "@/components/app-header";
 import { Card } from "@/components/card";
 import { EmptyState } from "@/components/empty-state";
+import { DatePickerField } from "@/components/events/date-picker-field";
+import { TimePickerField } from "@/components/events/time-picker-field";
 import { PrimaryButton } from "@/components/primary-button";
 import { ScreenContainer } from "@/components/screen-container";
 import { SectionHeader } from "@/components/section-header";
@@ -29,6 +32,7 @@ import { demoDataNotice } from "@/data/demo-data";
 import type {
   EventResponseValue,
   EventResponseWithProfile,
+  EventDeadlineMode,
   TeamEventInput,
   TeamEventType,
   TeamEventWithResponse,
@@ -41,6 +45,7 @@ import {
   formatResponseTimestamp,
   getTodayInputDate,
   splitIsoToLocalInputs,
+  toIsoFromLocalInput,
 } from "@/utils/event-dates";
 import {
   getEventResponseLabel,
@@ -48,6 +53,7 @@ import {
   getTeamEventTypeLabel,
   getTeamRoleLabel,
 } from "@/utils/format";
+import { hasRole } from "@/utils/roles";
 
 type EventFormMode = "create" | "edit";
 type ParticipantResponseGroup = EventResponseValue;
@@ -115,6 +121,18 @@ function createInputFromEvent(event: TeamEventWithResponse): TeamEventInput {
   };
 }
 
+function getDefaultDeadlineTime(startTime: string) {
+  const match = /^(\d{2}):(\d{2})$/.exec(startTime.trim());
+  if (!match) {
+    return "18:00";
+  }
+
+  const totalMinutes = Math.max(Number(match[1]) * 60 + Number(match[2]) - 60, 0);
+  const hoursLabel = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
+  const minutesLabel = String(totalMinutes % 60).padStart(2, "0");
+  return `${hoursLabel}:${minutesLabel}`;
+}
+
 export default function EventsScreen() {
   const { isDemoMode } = useAuth();
   const { colors } = useTheme();
@@ -122,7 +140,7 @@ export default function EventsScreen() {
   const {
     cancelEvent,
     cancelledEvents,
-    createEvent,
+    createEvents,
     errorMessage,
     getEventResponsesWithProfiles,
     isLoading,
@@ -136,6 +154,10 @@ export default function EventsScreen() {
   } = useEvents();
   const [formMode, setFormMode] = useState<EventFormMode>("create");
   const [eventInput, setEventInput] = useState<TeamEventInput>(createEmptyInput);
+  const [isMultipleCreate, setIsMultipleCreate] = useState(false);
+  const [selectedDates, setSelectedDates] = useState<string[]>([getTodayInputDate()]);
+  const [deadlineMode, setDeadlineMode] = useState<EventDeadlineMode>("none");
+  const [duplicateConflict, setDuplicateConflict] = useState(false);
   const [editingEvent, setEditingEvent] = useState<TeamEventWithResponse | null>(null);
   const [formError, setFormError] = useState("");
   const [showEventForm, setShowEventForm] = useState(false);
@@ -150,13 +172,23 @@ export default function EventsScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  const canManageEvents =
-    currentMembership?.role === "admin" || currentMembership?.role === "coach";
+  const canManageEvents = currentMembership
+    ? hasRole(currentMembership, "admin") || hasRole(currentMembership, "coach")
+    : false;
 
   function openCreateModal() {
+    const initialInput = createEmptyInput();
     setFormMode("create");
     setEditingEvent(null);
-    setEventInput(createEmptyInput());
+    setEventInput(initialInput);
+    setIsMultipleCreate(false);
+    setSelectedDates([initialInput.date]);
+    setDeadlineMode(
+      currentTeam?.defaultResponseDeadlineEnabled && currentTeam.defaultResponseDeadlineTime
+        ? "team_default"
+        : "none",
+    );
+    setDuplicateConflict(false);
     setFormError("");
     setShowEventForm(true);
   }
@@ -165,6 +197,10 @@ export default function EventsScreen() {
     setFormMode("edit");
     setEditingEvent(event);
     setEventInput(createInputFromEvent(event));
+    setIsMultipleCreate(false);
+    setSelectedDates([splitIsoToLocalInputs(event.startsAt).date]);
+    setDeadlineMode(event.responseDeadline ? "custom" : "none");
+    setDuplicateConflict(false);
     setFormError("");
     setShowEventForm(true);
   }
@@ -178,8 +214,34 @@ export default function EventsScreen() {
     setFormError("");
     try {
       if (formMode === "create") {
-        await createEvent({ input: eventInput, teamId: currentTeam.id });
+        const startsAt = toIsoFromLocalInput(eventInput.date, eventInput.startTime);
+        if (startsAt && new Date(startsAt).getTime() <= Date.now()) {
+          throw new Error("Beim Erstellen muss der Terminstart in der Zukunft liegen.");
+        }
+        await createEvents({
+          allowDuplicates: duplicateConflict,
+          deadlineMode,
+          input: eventInput,
+          selectedDates: isMultipleCreate ? selectedDates : [eventInput.date],
+          teamDefaultDeadlineTime: currentTeam.defaultResponseDeadlineTime,
+          teamId: currentTeam.id,
+        });
       } else if (editingEvent) {
+        const hasResponseDeadlineInput =
+          eventInput.responseDeadlineDate.trim() || eventInput.responseDeadlineTime.trim();
+        const nextResponseDeadline = hasResponseDeadlineInput
+          ? toIsoFromLocalInput(eventInput.responseDeadlineDate, eventInput.responseDeadlineTime)
+          : null;
+        if (nextResponseDeadline) {
+          const nextDeadlineMs = new Date(nextResponseDeadline).getTime();
+          const previousDeadlineMs = editingEvent.responseDeadline
+            ? new Date(editingEvent.responseDeadline).getTime()
+            : null;
+          const isUnchangedDeadline = previousDeadlineMs !== null && previousDeadlineMs === nextDeadlineMs;
+          if (!isUnchangedDeadline && nextDeadlineMs <= Date.now()) {
+            throw new Error("Die Rückmeldefrist muss in der Zukunft liegen.");
+          }
+        }
         await updateEvent({
           eventId: editingEvent.id,
           input: eventInput,
@@ -187,14 +249,18 @@ export default function EventsScreen() {
         });
       }
       setShowEventForm(false);
+      setDuplicateConflict(false);
     } catch (error) {
-      setFormError(
+      const message =
         error instanceof Error
           ? error.message
           : formMode === "create"
             ? "Termin konnte nicht erstellt werden."
-            : "Termin konnte nicht aktualisiert werden.",
-      );
+            : "Termin konnte nicht aktualisiert werden.";
+      if (message.includes("bereits einen geplanten Termin")) {
+        setDuplicateConflict(true);
+      }
+      setFormError(message);
     }
   }
 
@@ -307,11 +373,51 @@ export default function EventsScreen() {
       <EventFormModal
         errorMessage={formError}
         input={eventInput}
+        isMultipleCreate={isMultipleCreate}
         mode={formMode}
         onCancel={() => setShowEventForm(false)}
         onChange={setEventInput}
+        onDeadlineModeChange={setDeadlineMode}
+        onDuplicateConflictChange={setDuplicateConflict}
+        onMultipleCreateChange={(value) => {
+          setDuplicateConflict(false);
+          if (value) {
+            setIsMultipleCreate(true);
+            setSelectedDates([eventInput.date]);
+            if (deadlineMode === "custom") {
+              setDeadlineMode(
+                currentTeam?.defaultResponseDeadlineEnabled && currentTeam.defaultResponseDeadlineTime
+                  ? "team_default"
+                  : "none",
+              );
+            }
+            return;
+          }
+
+          const nextDate = [...selectedDates].sort()[0] ?? eventInput.date;
+          setIsMultipleCreate(false);
+          setSelectedDates([nextDate]);
+          setEventInput((currentInput) => ({ ...currentInput, date: nextDate }));
+          if (deadlineMode === "custom") {
+            setDeadlineMode("none");
+          }
+        }}
         onSave={() => void saveEvent()}
+        onSelectedDatesChange={(values) => {
+          setSelectedDates(values);
+          if (values[0]) {
+            setEventInput((currentInput) => ({ ...currentInput, date: values[0] }));
+          }
+          setDuplicateConflict(false);
+        }}
         saving={savingEvent}
+        selectedDates={selectedDates}
+        deadlineMode={deadlineMode}
+        duplicateConflict={duplicateConflict}
+        teamDefaultDeadlineEnabled={Boolean(
+          currentTeam?.defaultResponseDeadlineEnabled && currentTeam.defaultResponseDeadlineTime,
+        )}
+        teamDefaultDeadlineTime={currentTeam?.defaultResponseDeadlineTime ?? null}
         visible={showEventForm}
       />
 
@@ -507,29 +613,73 @@ function ParticipantSummaryButton({
 }
 
 function EventFormModal({
+  deadlineMode,
+  duplicateConflict,
   errorMessage,
   input,
+  isMultipleCreate,
   mode,
   onCancel,
   onChange,
+  onDeadlineModeChange,
+  onDuplicateConflictChange,
+  onMultipleCreateChange,
   onSave,
+  onSelectedDatesChange,
   saving,
+  selectedDates,
+  teamDefaultDeadlineEnabled,
+  teamDefaultDeadlineTime,
   visible,
 }: {
+  deadlineMode: EventDeadlineMode;
+  duplicateConflict: boolean;
   errorMessage: string;
   input: TeamEventInput;
+  isMultipleCreate: boolean;
   mode: EventFormMode;
   onCancel: () => void;
   onChange: (input: TeamEventInput) => void;
+  onDeadlineModeChange: (mode: EventDeadlineMode) => void;
+  onDuplicateConflictChange: (value: boolean) => void;
+  onMultipleCreateChange: (value: boolean) => void;
   onSave: () => void;
+  onSelectedDatesChange: (values: string[]) => void;
   saving: boolean;
+  selectedDates: string[];
+  teamDefaultDeadlineEnabled: boolean;
+  teamDefaultDeadlineTime: string | null;
   visible: boolean;
 }) {
   const { colors } = useTheme();
 
   function updateField<K extends keyof TeamEventInput>(key: K, value: TeamEventInput[K]) {
+    if (mode === "create") {
+      onDuplicateConflictChange(false);
+    }
     onChange({ ...input, [key]: value });
   }
+
+  function activateCustomDeadline() {
+    onDeadlineModeChange("custom");
+    onChange({
+      ...input,
+      responseDeadlineDate: input.responseDeadlineDate || input.date || getTodayInputDate(),
+      responseDeadlineTime: input.responseDeadlineTime || getDefaultDeadlineTime(input.startTime),
+    });
+  }
+
+  function clearDeadline() {
+    onDeadlineModeChange("none");
+    onChange({
+      ...input,
+      responseDeadlineDate: "",
+      responseDeadlineTime: "",
+    });
+  }
+
+  const hasDeadline = deadlineMode === "custom" && Boolean(input.responseDeadlineDate || input.responseDeadlineTime);
+  const sortedSelectedDates = [...selectedDates].sort();
 
   return (
     <Modal animationType="fade" onRequestClose={onCancel} transparent visible={visible}>
@@ -537,6 +687,7 @@ function EventFormModal({
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.modalBackdrop}
       >
+        <SafeAreaView style={styles.modalSafeArea}>
         <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.modalTitle, { color: colors.text }]}>
             {mode === "create" ? "Termin hinzufügen" : "Termin bearbeiten"}
@@ -550,6 +701,8 @@ function EventFormModal({
             <View style={styles.segment}>
               {EVENT_TYPE_OPTIONS.map((type) => (
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: input.eventType === type }}
                   key={type}
                   onPress={() => updateField("eventType", type)}
                   style={[
@@ -574,51 +727,176 @@ function EventFormModal({
               onChangeText={(value) => updateField("description", value)}
             />
             <FormInput label="Ort optional" value={input.location} onChangeText={(value) => updateField("location", value)} />
+            {mode === "create" ? (
+              <View style={[styles.deadlineBox, { borderColor: colors.border, backgroundColor: colors.inputBackground }]}>
+                <View style={styles.deadlineHeader}>
+                  <View style={styles.deadlineTextColumn}>
+                    <Text style={[styles.fieldLabel, { color: colors.text }]}>Mehrere Termine erstellen</Text>
+                    <Text style={[styles.deadlineHint, { color: colors.mutedText }]}>
+                      Wähle bis zu 20 unabhängige Tage. Es wird keine Serie gespeichert.
+                    </Text>
+                  </View>
+                  <PrimaryButton
+                    label={isMultipleCreate ? "Einzeltermin" : "Mehrere Termine"}
+                    onPress={() => onMultipleCreateChange(!isMultipleCreate)}
+                    variant="secondary"
+                  />
+                </View>
+                {isMultipleCreate ? (
+                  <Text style={[styles.deadlineHint, { color: colors.mutedText }]}>
+                    {sortedSelectedDates.length} Termine ausgewählt: {sortedSelectedDates.join(", ")}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
             <View style={styles.twoColumns}>
-              <FormInput
+              <DatePickerField
+                helperText={
+                  mode === "create"
+                    ? isMultipleCreate
+                      ? "Erneutes Tippen entfernt einen Tag. Maximal 20 Termine."
+                      : "Vergangene Tage sind beim Erstellen deaktiviert."
+                    : undefined
+                }
                 label="Datum"
+                maxSelections={20}
+                minDate={mode === "create" ? getTodayInputDate() : undefined}
+                onChange={(value) => updateField("date", value)}
+                onMultiChange={onSelectedDatesChange}
+                selectionMode={mode === "create" && isMultipleCreate ? "multiple" : "single"}
                 style={styles.twoColumnItem}
                 value={input.date}
-                onChangeText={(value) => updateField("date", value)}
+                values={selectedDates}
               />
-              <FormInput
+              <TimePickerField
+                fallbackTime="19:00"
                 label="Startzeit"
+                onChange={(value) => updateField("startTime", value)}
                 style={styles.twoColumnItem}
                 value={input.startTime}
-                onChangeText={(value) => updateField("startTime", value)}
               />
             </View>
             <View style={styles.twoColumns}>
-              <FormInput
-                label="Endzeit optional"
+              <TimePickerField
+                allowClear
+                emptyLabel="Keine Endzeit"
+                fallbackTime={input.startTime || "20:30"}
+                helperText="Die Endzeit ist optional und kann entfernt werden."
+                label="Endzeit"
+                onChange={(value) => updateField("endTime", value)}
                 style={styles.twoColumnItem}
                 value={input.endTime}
-                onChangeText={(value) => updateField("endTime", value)}
-              />
-              <FormInput
-                label="Fristzeit optional"
-                style={styles.twoColumnItem}
-                value={input.responseDeadlineTime}
-                onChangeText={(value) => updateField("responseDeadlineTime", value)}
               />
             </View>
-            <FormInput
-              label="Rückmeldefrist Datum optional"
-              value={input.responseDeadlineDate}
-              onChangeText={(value) => updateField("responseDeadlineDate", value)}
-            />
-            {errorMessage ? <Text style={[styles.error, { color: colors.danger }]}>{errorMessage}</Text> : null}
+            <View style={[styles.deadlineBox, { borderColor: colors.border, backgroundColor: colors.inputBackground }]}>
+              <View style={styles.deadlineHeader}>
+                <View style={styles.deadlineTextColumn}>
+                  <Text style={[styles.fieldLabel, { color: colors.text }]}>Rückmeldefrist</Text>
+                  <Text style={[styles.deadlineHint, { color: colors.mutedText }]}>
+                    Danach sind keine Rückmeldungen mehr möglich.
+                  </Text>
+                </View>
+              </View>
+              {mode === "create" ? (
+                <View style={styles.segment}>
+                  <DeadlineModeButton
+                    active={deadlineMode === "team_default"}
+                    disabled={!teamDefaultDeadlineEnabled}
+                    label="Teamstandard"
+                    onPress={() => {
+                      if (teamDefaultDeadlineEnabled) {
+                        onDeadlineModeChange("team_default");
+                      }
+                    }}
+                  />
+                  <DeadlineModeButton
+                    active={deadlineMode === "custom"}
+                    disabled={isMultipleCreate}
+                    label="Individuell"
+                    onPress={activateCustomDeadline}
+                  />
+                  <DeadlineModeButton
+                    active={deadlineMode === "none"}
+                    label="Keine Frist"
+                    onPress={clearDeadline}
+                  />
+                </View>
+              ) : (
+                <PrimaryButton
+                  label={hasDeadline ? "Frist entfernen" : "Frist aktivieren"}
+                  onPress={hasDeadline ? clearDeadline : activateCustomDeadline}
+                  variant="secondary"
+                />
+              )}
+              {mode === "create" && deadlineMode === "team_default" ? (
+                <Text style={[styles.deadlineHint, { color: colors.mutedText }]}>
+                  Rückmeldungen sind am Veranstaltungstag bis {teamDefaultDeadlineTime ?? "--:--"} Uhr möglich.
+                </Text>
+              ) : null}
+              {mode === "create" && !teamDefaultDeadlineEnabled ? (
+                <Text style={[styles.deadlineHint, { color: colors.mutedText }]}>
+                  Es ist kein Teamstandard aktiv. Du kannst keine Frist oder bei Einzelterminen eine individuelle Frist wählen.
+                </Text>
+              ) : null}
+              {mode === "create" && isMultipleCreate && deadlineMode !== "team_default" ? (
+                <Text style={[styles.deadlineHint, { color: colors.mutedText }]}>
+                  Individuelle Fristen kannst du nach der Erstellung in den einzelnen Terminen festlegen.
+                </Text>
+              ) : null}
+              {hasDeadline ? (
+                <View style={styles.twoColumns}>
+                  <DatePickerField
+                    label="Fristdatum"
+                    onChange={(value) => updateField("responseDeadlineDate", value)}
+                    style={styles.twoColumnItem}
+                    value={input.responseDeadlineDate}
+                  />
+                  <TimePickerField
+                    fallbackTime={getDefaultDeadlineTime(input.startTime)}
+                    label="Fristzeit"
+                    onChange={(value) => updateField("responseDeadlineTime", value)}
+                    style={styles.twoColumnItem}
+                    value={input.responseDeadlineTime}
+                  />
+                </View>
+              ) : null}
+            </View>
+            {duplicateConflict ? (
+              <Text style={[styles.error, { color: colors.warning }]}>
+                Es gibt bereits einen geplanten Termin zu mindestens einem ausgewählten Zeitpunkt. Wenn das richtig ist, speichere erneut.
+              </Text>
+            ) : null}
+            {errorMessage ? (
+              <Text
+                accessibilityLiveRegion="polite"
+                accessibilityRole="alert"
+                style={[styles.error, { color: colors.danger }]}
+              >
+                {errorMessage}
+              </Text>
+            ) : null}
           </ScrollView>
           {saving ? <ActivityIndicator color={colors.primary} /> : null}
           <View style={styles.modalActions}>
             <PrimaryButton label="Abbrechen" onPress={onCancel} variant="secondary" />
             <PrimaryButton
-              disabled={saving}
-              label={saving ? "Speichert ..." : mode === "create" ? "Termin erstellen" : "Änderungen speichern"}
+              disabled={saving || (mode === "create" && isMultipleCreate && sortedSelectedDates.length < 1)}
+              label={
+                saving
+                  ? "Speichert ..."
+                  : duplicateConflict
+                    ? "Trotzdem erstellen"
+                    : mode === "create"
+                      ? isMultipleCreate
+                        ? `${sortedSelectedDates.length} Termine erstellen`
+                        : "Termin erstellen"
+                      : "Änderungen speichern"
+              }
               onPress={onSave}
             />
           </View>
-        </View>
+          </View>
+        </SafeAreaView>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -657,6 +935,40 @@ function FormInput({
         value={value}
       />
     </View>
+  );
+}
+
+function DeadlineModeButton({
+  active,
+  disabled,
+  label,
+  onPress,
+}: {
+  active: boolean;
+  disabled?: boolean;
+  label: string;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: Boolean(disabled), selected: active }}
+      disabled={disabled}
+      onPress={onPress}
+      style={[
+        styles.segmentButton,
+        {
+          backgroundColor: active ? colors.primary : colors.surface,
+          borderColor: colors.border,
+        },
+        disabled && styles.disabled,
+      ]}
+    >
+      <Text style={[styles.actionText, { color: active ? colors.onPrimary : colors.text }]}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -940,6 +1252,33 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: fontSizes.sm,
     fontWeight: "800",
+  },
+  modalSafeArea: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+  },
+  deadlineBox: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  deadlineHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.md,
+    justifyContent: "space-between",
+  },
+  deadlineHint: {
+    fontSize: fontSizes.xs,
+    lineHeight: 18,
+  },
+  deadlineTextColumn: {
+    flex: 1,
+    gap: spacing.xs,
+    minWidth: 180,
   },
   input: {
     borderRadius: radius.md,
