@@ -8,6 +8,8 @@ export type Team = {
   joinCode: string;
   createdBy: string;
   accentColor: string | null;
+  defaultResponseDeadlineEnabled: boolean;
+  defaultResponseDeadlineTime: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -76,6 +78,8 @@ export type EventResponseWithProfile = EventResponse & {
   roles: TeamRole[];
 };
 
+export type EventDeadlineMode = "team_default" | "custom" | "none";
+
 export type TeamEventInput = {
   eventType: TeamEventType;
   title: string;
@@ -92,4 +96,13 @@ export type SaveTeamEventParams = {
   eventId?: string;
   teamId: string;
   input: TeamEventInput;
+};
+
+export type CreateTeamEventsParams = {
+  allowDuplicates?: boolean;
+  deadlineMode: EventDeadlineMode;
+  input: TeamEventInput;
+  selectedDates: string[];
+  teamDefaultDeadlineTime?: string | null;
+  teamId: string;
 };
