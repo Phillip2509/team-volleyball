@@ -139,3 +139,21 @@ Keine Builds, Commits, Pushes, Merges oder Tags ohne ausdrücklichen Auftrag.
 - Mehrere read-only Agents nur bei unabhängigen Prüfungen parallel.
 - Ein Spezialagent ersetzt nicht den allgemeinen Reviewer.
 - Ein Skill ist ein Workflow, keine Erlaubnis für ungefragte Aktionen.
+
+## Runtime-Fallback
+
+Custom Agents bleiben der bevorzugte Weg. Wenn die Runtime bei einem projektbezogenen Custom Agent `unknown agent_type` meldet, gilt verbindlich die Fallback-Regel aus `AGENTS.md`.
+
+- Read-only Custom Agents werden auf den eingebauten `explorer` abgebildet.
+- Die beiden Schreibagents `volley-implementer` und `volley-frontend-implementer` werden bei ausdrücklich freigegebener Schreibarbeit auf den eingebauten `worker` abgebildet.
+- Die `developer_instructions` der passenden TOML müssen in den Fallback-Auftrag übernommen werden.
+- Der Fallback muss im Abschlussbericht offengelegt werden.
+- Ein Skill darf wegen `unknown agent_type` nicht blind immer wieder denselben Agenten starten.
+- Spezialreviewer bleiben trotz Fallback fachlich getrennte Rollen; ihre TOML-Anweisungen dürfen nicht vermischt werden.
+- Höchstens ein schreibender Fallback-Agent gleichzeitig.
+
+| Custom-Agent-Typ | Built-in-Fallback |
+|---|---|
+| read-only | explorer |
+| workspace-write | worker |
+| unklar oder ungültig | kein Start, BLOCKIERT |
