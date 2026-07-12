@@ -120,7 +120,9 @@ end;
 $$;
 
 revoke all on function public.respond_to_team_event(uuid, text, text) from public;
+revoke all on function public.respond_to_team_event(uuid, text, text) from anon;
 grant execute on function public.respond_to_team_event(uuid, text, text) to authenticated;
 
 revoke all on function public.clear_team_event_response(uuid) from public;
+revoke all on function public.clear_team_event_response(uuid) from anon;
 grant execute on function public.clear_team_event_response(uuid) to authenticated;
