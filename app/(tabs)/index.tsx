@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 
@@ -15,8 +16,13 @@ import { useEvents } from "@/context/event-context";
 import { useTeam } from "@/context/team-context";
 import { useTheme } from "@/context/theme-context";
 import { demoAnnouncements, demoDataNotice, demoEvents, demoTeamMembers } from "@/data/demo-data";
+import type { EventResponseValue, TeamEventWithResponse } from "@/types/team";
 import { formatEventDateTime } from "@/utils/event-dates";
 import { getEventResponseLabel, getTeamEventTypeLabel, getTeamRoleLabel } from "@/utils/format";
+
+function getCurrentTimeMs() {
+  return Date.now();
+}
 
 export default function HomeScreen() {
   const { colors } = useTheme();
@@ -33,8 +39,34 @@ export default function HomeScreen() {
   const nextEvent = demoEvents[0];
   const activeMembers = demoTeamMembers.filter((member) => member.status === "aktiv").length;
   const latestAnnouncement = demoAnnouncements[0];
+  const [renderTimeMs, setRenderTimeMs] = useState(() => Date.now());
   const canManageEvents =
     currentMembership?.role === "admin" || currentMembership?.role === "coach";
+  const nextEventDeadlinePassed = realNextEvent?.responseDeadline
+    ? renderTimeMs > new Date(realNextEvent.responseDeadline).getTime()
+    : false;
+  const nextEventStartPassed = realNextEvent && !realNextEvent.responseDeadline
+    ? renderTimeMs >= new Date(realNextEvent.startsAt).getTime()
+    : false;
+  const nextEventResponseClosed = Boolean(nextEventDeadlinePassed || nextEventStartPassed);
+  const canRespondToNextEvent =
+    Boolean(realNextEvent) && realNextEvent?.status === "scheduled" && !nextEventResponseClosed;
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRenderTimeMs(Date.now());
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  async function handleRespond(event: TeamEventWithResponse, response: EventResponseValue) {
+    try {
+      await respondToEvent(event.id, response);
+    } catch {
+      const currentTimeMs = getCurrentTimeMs();
+      setRenderTimeMs((previousTimeMs) => Math.max(previousTimeMs, currentTimeMs));
+    }
+  }
 
   return (
     <ScreenContainer>
@@ -65,24 +97,27 @@ export default function HomeScreen() {
           </Text>
           <View style={styles.actions}>
             <PrimaryButton
-              disabled={respondingEventId === realNextEvent.id}
+              disabled={!canRespondToNextEvent || respondingEventId === realNextEvent.id}
               label="Zusagen"
-              onPress={() => void respondToEvent(realNextEvent.id, "accepted")}
+              onPress={() => void handleRespond(realNextEvent, "accepted")}
               variant="secondary"
             />
             <PrimaryButton
-              disabled={respondingEventId === realNextEvent.id}
+              disabled={!canRespondToNextEvent || respondingEventId === realNextEvent.id}
               label="Vielleicht"
-              onPress={() => void respondToEvent(realNextEvent.id, "maybe")}
+              onPress={() => void handleRespond(realNextEvent, "maybe")}
               variant="secondary"
             />
             <PrimaryButton
-              disabled={respondingEventId === realNextEvent.id}
+              disabled={!canRespondToNextEvent || respondingEventId === realNextEvent.id}
               label="Absagen"
-              onPress={() => void respondToEvent(realNextEvent.id, "declined")}
+              onPress={() => void handleRespond(realNextEvent, "declined")}
               variant="secondary"
             />
           </View>
+          {nextEventResponseClosed ? (
+            <Text style={[styles.error, { color: colors.warning }]}>Rückmeldung geschlossen</Text>
+          ) : null}
         </Card>
       ) : (
         <EmptyState

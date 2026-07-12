@@ -72,6 +72,10 @@ const PARTICIPANT_GROUPS: { key: ParticipantResponseGroup; title: string }[] = [
 ];
 const ROLE_DISPLAY_ORDER: TeamRole[] = ["admin", "coach", "player"];
 
+function getCurrentTimeMs() {
+  return Date.now();
+}
+
 function getRolesLabel(roles: TeamRole[]): string {
   return [...roles]
     .sort((left, right) => ROLE_DISPLAY_ORDER.indexOf(left) - ROLE_DISPLAY_ORDER.indexOf(right))
@@ -207,6 +211,15 @@ export default function EventsScreen() {
     }
   }
 
+  async function handleRespond(event: TeamEventWithResponse, response: EventResponseValue) {
+    try {
+      await respondToEvent(event.id, response);
+    } catch {
+      const currentTimeMs = getCurrentTimeMs();
+      setRenderTimeMs((previousTimeMs) => Math.max(previousTimeMs, currentTimeMs));
+    }
+  }
+
   return (
     <ScreenContainer>
       <AppHeader
@@ -248,7 +261,7 @@ export default function EventsScreen() {
             onCancel={() => setCancelTarget(event)}
             onEdit={() => openEditModal(event)}
             onOpenParticipants={() => setParticipantsTarget(event)}
-            onRespond={(response) => void respondToEvent(event.id, response)}
+            onRespond={(response) => void handleRespond(event, response)}
           />
         ))
       )}
@@ -267,7 +280,7 @@ export default function EventsScreen() {
             onCancel={() => setCancelTarget(event)}
             onEdit={() => openEditModal(event)}
             onOpenParticipants={() => setParticipantsTarget(event)}
-            onRespond={(response) => void respondToEvent(event.id, response)}
+            onRespond={(response) => void handleRespond(event, response)}
           />
         ))
       )}
