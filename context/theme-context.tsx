@@ -2,7 +2,15 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import { useColorScheme } from "react-native";
 
-import { darkColors, lightColors, ResolvedTheme, ThemeColors } from "@/constants/theme";
+import {
+  darkColors,
+  darkFoundationColors,
+  FoundationColors,
+  lightColors,
+  lightFoundationColors,
+  ResolvedTheme,
+  ThemeColors,
+} from "@/constants/theme";
 
 const THEME_PREFERENCE_KEY = "team-volleyball-theme";
 
@@ -10,6 +18,7 @@ type ThemePreference = "system" | "light" | "dark";
 
 type ThemeContextValue = {
   colors: ThemeColors;
+  foundationColors: FoundationColors;
   preference: ThemePreference;
   resolvedTheme: ResolvedTheme;
   systemTheme: ResolvedTheme;
@@ -45,6 +54,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ThemeContextValue>(
     () => ({
       colors: resolvedTheme === "dark" ? darkColors : lightColors,
+      foundationColors:
+        resolvedTheme === "dark" ? darkFoundationColors : lightFoundationColors,
       preference,
       resolvedTheme,
       systemTheme,

@@ -1,5 +1,21 @@
 export type ResolvedTheme = "light" | "dark";
 
+export type FoundationColors = {
+  canvas: string;
+  surface: string;
+  surfaceSubtle: string;
+  text: string;
+  mutedText: string;
+  border: string;
+  accent: string;
+  accentPressed: string;
+  accentSoft: string;
+  success: string;
+  warning: string;
+  danger: string;
+  overlay: string;
+};
+
 export type ThemeColors = {
   background: string;
   surface: string;
@@ -30,12 +46,30 @@ export const spacing = {
   xxl: 32,
 };
 
+export const foundationSpacing = {
+  space1: 4,
+  space2: 8,
+  space3: 12,
+  space4: 16,
+  space5: 20,
+  space6: 24,
+  space7: 32,
+  space8: 40,
+} as const;
+
 export const radius = {
   sm: 8,
   md: 12,
   lg: 18,
   xl: 24,
 };
+
+export const foundationRadius = {
+  small: 8,
+  control: 12,
+  sheet: 16,
+  full: 999,
+} as const;
 
 export const fontSizes = {
   xs: 12,
@@ -45,6 +79,25 @@ export const fontSizes = {
   xl: 26,
   xxl: 34,
 };
+
+export const foundationTypography = {
+  greeting: { fontSize: 28, lineHeight: 34, fontWeight: "700" as const },
+  section: { fontSize: 20, lineHeight: 26, fontWeight: "700" as const },
+  cardTitle: { fontSize: 17, lineHeight: 22, fontWeight: "700" as const },
+  body: { fontSize: 15, lineHeight: 21, fontWeight: "400" as const },
+  label: { fontSize: 14, lineHeight: 19, fontWeight: "600" as const },
+  caption: { fontSize: 12, lineHeight: 16, fontWeight: "600" as const },
+} as const;
+
+export const foundationSizes = {
+  minimumTouchTarget: 44,
+  minimumInputHeight: 48,
+  screenPadding: 16,
+  cardPadding: 16,
+  inlineIcon: 16,
+  controlIcon: 20,
+  navigationIcon: 24,
+} as const;
 
 export const shadows = {
   card: {
@@ -76,6 +129,22 @@ export const lightColors: ThemeColors = {
   shadow: "#0F172A",
 };
 
+export const lightFoundationColors: FoundationColors = {
+  canvas: "#F6F8FB",
+  surface: "#FFFFFF",
+  surfaceSubtle: "#F1F5F9",
+  text: "#0F172A",
+  mutedText: "#5B6B80",
+  border: "#DCE3ED",
+  accent: "#047E9B",
+  accentPressed: "#03677F",
+  accentSoft: "#DDF7FC",
+  success: "#0F6F4D",
+  warning: "#89520D",
+  danger: "#A93440",
+  overlay: "#0F172A7A",
+};
+
 export const darkColors: ThemeColors = {
   background: "#0B1220",
   surface: "#121C2E",
@@ -95,4 +164,20 @@ export const darkColors: ThemeColors = {
   onPrimary: "#06141A",
   inputBackground: "#17243A",
   shadow: "#000000",
+};
+
+export const darkFoundationColors: FoundationColors = {
+  canvas: "#0B1220",
+  surface: "#121C2E",
+  surfaceSubtle: "#17243A",
+  text: "#F8FAFC",
+  mutedText: "#A5B4C7",
+  border: "#2B3A52",
+  accent: "#27B9D2",
+  accentPressed: "#1AA0B6",
+  accentSoft: "#123947",
+  success: "#62D49F",
+  warning: "#F0B653",
+  danger: "#F1868F",
+  overlay: "#0000008F",
 };

@@ -1,18 +1,42 @@
+import type { ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { fontSizes, spacing } from "@/constants/theme";
+import { fontSizes, foundationSpacing, foundationTypography, spacing } from "@/constants/theme";
 import { useTheme } from "@/context/theme-context";
 
 export function AppHeader({
   eyebrow,
   title,
   subtitle,
+  variant = "default",
+  rightAction,
 }: {
   eyebrow?: string;
   title: string;
   subtitle?: string;
+  variant?: "default" | "greeting";
+  rightAction?: ReactNode;
 }) {
-  const { colors } = useTheme();
+  const { colors, foundationColors } = useTheme();
+
+  if (variant === "greeting") {
+    return (
+      <View style={styles.greetingHeader}>
+        <View style={styles.greetingCopy}>
+          {eyebrow ? (
+            <Text style={[styles.eyebrow, { color: foundationColors.accent }]}>{eyebrow}</Text>
+          ) : null}
+          <Text style={[styles.greetingTitle, { color: foundationColors.text }]}>{title}</Text>
+          {subtitle ? (
+            <Text style={[styles.greetingSubtitle, { color: foundationColors.mutedText }]}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </View>
+        {rightAction ? <View style={styles.rightAction}>{rightAction}</View> : null}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.header}>
@@ -44,5 +68,26 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: fontSizes.md,
     lineHeight: 23,
+  },
+  greetingHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: foundationSpacing.space3,
+    justifyContent: "space-between",
+    paddingTop: foundationSpacing.space2,
+  },
+  greetingCopy: {
+    flex: 1,
+    gap: foundationSpacing.space1,
+    minWidth: 0,
+  },
+  greetingTitle: {
+    ...foundationTypography.greeting,
+  },
+  greetingSubtitle: {
+    ...foundationTypography.body,
+  },
+  rightAction: {
+    flexShrink: 0,
   },
 });

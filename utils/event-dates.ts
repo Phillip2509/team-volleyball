@@ -1,3 +1,135 @@
+import type { TeamEventWithResponse } from "@/types/team";
+
+export type EventPresentationState = "open" | "closed" | "past" | "cancelled" | "invalid";
+
+export function getLocalWeekRange(referenceDate: Date) {
+  const start = new Date(referenceDate);
+  start.setHours(0, 0, 0, 0);
+  const dayFromMonday = (start.getDay() + 6) % 7;
+  start.setDate(start.getDate() - dayFromMonday);
+
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+
+  return { start, end };
+}
+
+export function getEventsForLocalWeek(
+  events: TeamEventWithResponse[],
+  nowMs: number,
+) {
+  const { start, end } = getLocalWeekRange(new Date(nowMs));
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  const current: TeamEventWithResponse[] = [];
+  const past: TeamEventWithResponse[] = [];
+
+  for (const event of events) {
+    const eventStartMs = new Date(event.startsAt).getTime();
+    if (Number.isNaN(eventStartMs) || eventStartMs < startMs || eventStartMs >= endMs) {
+      continue;
+    }
+
+    if (eventStartMs >= nowMs) {
+      current.push(event);
+    } else {
+      past.push(event);
+    }
+  }
+
+  current.sort(
+    (left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime(),
+  );
+  past.sort(
+    (left, right) => new Date(right.startsAt).getTime() - new Date(left.startsAt).getTime(),
+  );
+
+  return [...current, ...past];
+}
+
+export function formatLocalWeekRange(referenceDate: Date) {
+  const { start, end } = getLocalWeekRange(referenceDate);
+  const lastDay = new Date(end);
+  lastDay.setDate(lastDay.getDate() - 1);
+
+  const sameMonth = start.getMonth() === lastDay.getMonth();
+  const sameYear = start.getFullYear() === lastDay.getFullYear();
+  const dayAndMonth = new Intl.DateTimeFormat("de-DE", {
+    day: "numeric",
+    month: "long",
+  });
+  const fullDate = new Intl.DateTimeFormat("de-DE", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  if (sameMonth && sameYear) {
+    return `${start.getDate()}.–${dayAndMonth.format(lastDay)}`;
+  }
+  if (sameYear) {
+    return `${dayAndMonth.format(start)} – ${dayAndMonth.format(lastDay)}`;
+  }
+  return `${fullDate.format(start)} – ${fullDate.format(lastDay)}`;
+}
+
+export function getEventPresentationState(
+  event: Pick<TeamEventWithResponse, "startsAt" | "responseDeadline" | "status">,
+  nowMs: number,
+): EventPresentationState {
+  const startMs = new Date(event.startsAt).getTime();
+  if (Number.isNaN(startMs)) {
+    return "invalid";
+  }
+  if (event.status === "cancelled") {
+    return "cancelled";
+  }
+  if (nowMs >= startMs) {
+    return "past";
+  }
+  if (event.responseDeadline) {
+    const deadlineMs = new Date(event.responseDeadline).getTime();
+    if (!Number.isNaN(deadlineMs) && nowMs > deadlineMs) {
+      return "closed";
+    }
+  }
+  return "open";
+}
+
+export function formatEventDateLabel(isoValue: string) {
+  const date = new Date(isoValue);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("de-DE", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+  }).format(date);
+}
+
+export function formatEventTimeRange(startsAt: string, endsAt: string | null) {
+  const startTime = formatEventTime(startsAt);
+  const endTime = endsAt ? formatEventTime(endsAt) : "";
+  if (!startTime) {
+    return "";
+  }
+  return endTime ? `${startTime}–${endTime} Uhr` : `${startTime} Uhr`;
+}
+
+export function formatEventDeadline(isoValue: string) {
+  const date = new Date(isoValue);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 export function getTodayInputDate() {
   const now = new Date();
   return formatInputDate(now);

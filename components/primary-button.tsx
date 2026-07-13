@@ -8,11 +8,13 @@ export function PrimaryButton({
   onPress,
   disabled,
   variant = "primary",
+  size = "default",
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
   variant?: "primary" | "secondary";
+  size?: "default" | "compact";
 }) {
   const { colors } = useTheme();
   const isSecondary = variant === "secondary";
@@ -25,6 +27,7 @@ export function PrimaryButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
+        size === "compact" && styles.compactButton,
         {
           backgroundColor: isSecondary ? colors.inputBackground : colors.primary,
           borderColor: isSecondary ? colors.border : colors.primary,
@@ -52,6 +55,12 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.55,
+  },
+  compactButton: {
+    alignSelf: "flex-start",
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   label: {
     fontSize: fontSizes.sm,
